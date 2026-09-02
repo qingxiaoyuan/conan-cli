@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    :root {
+      --bg: var(--vscode-editor-background);
+      --panel: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
+      --text: var(--vscode-foreground);
+      --muted: var(--vscode-descriptionForeground);
+      --border: var(--vscode-widget-border, var(--vscode-panel-border, var(--vscode-contrastBorder)));
+      --hover: var(--vscode-list-hoverBackground);
+      --sel: var(--vscode-list-activeSelectionBackground);
+      --sel-fg: var(--vscode-list-activeSelectionForeground);
+      --btn: var(--vscode-button-background);
+      --btn-fg: var(--vscode-button-foreground);
+      --btn2: var(--vscode-button-secondaryBackground);
+      --btn2-fg: var(--vscode-button-secondaryForeground);
+      --input-bg: var(--vscode-input-background);
+      --input-fg: var(--vscode-input-foreground);
+      --input-border: var(--vscode-input-border, var(--border));
+      --focus: var(--vscode-focusBorder);
+      --link: var(--vscode-textLink-foreground);
+      --ok: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-debugIcon-startForeground)));
+      --warn: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+      --err: var(--vscode-errorForeground);
+      --widget: var(--vscode-editorWidget-background);
+      --badge-bg: var(--vscode-badge-background);
+      --badge-fg: var(--vscode-badge-foreground);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0 !important;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size, 13px);
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .mono { font-family: var(--vscode-editor-font-family, ui-monospace, Menlo, Consolas, monospace); }
+    .app { min-height: 100%; display: flex; flex-direction: column; background: var(--bg); }
+    .topbar {
+      height: 56px; padding: 0 20px; display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      background: var(--panel);
+    }
+    .brand { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 600; letter-spacing: -.02em; }
+    .brand svg { color: var(--link); }
+    nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: 8px; }
+    .nav-btn {
+      height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid transparent;
+      background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 500;
+    }
+    .nav-btn:hover { color: var(--text); background: var(--hover); }
+    .nav-btn.active { color: var(--sel-fg, var(--text)); background: var(--sel, var(--btn2)); border-color: var(--border); }
+    .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; background: transparent;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .content { flex: 1; overflow: auto; padding: 24px; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .headline { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .kicker { margin: 0; font-size: 11px; color: var(--muted); }
+    h1 { margin: 4px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -.03em; color: var(--text); }
+    .lede { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); max-width: 520px; }
+    h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.03em; color: var(--text); }
+    .sub { margin: 4px 0 20px; font-size: 12.5px; color: var(--muted); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--btn2); color: var(--btn2-fg); font-size: 12px;
+    }
+    .btn:hover { background: var(--hover); }
+    .btn.primary { background: var(--btn); border-color: var(--btn); color: var(--btn-fg); font-weight: 600; }
+    .btn.primary:hover { filter: brightness(1.06); }
+    .btn.ready { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+    .btn.ready:disabled { opacity: 1; cursor: default; }
+    .btn.link { height: auto; padding: 0; border: 0; color: var(--link); font-size: 11.5px; background: none; }
+    .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+    .card { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 16px; }
+    .card.flat { padding: 0; overflow: hidden; }
+    .label { font-size: 10.5px; color: var(--muted); }
+    .label.strong { color: var(--text); font-size: 13px; font-weight: 500; }
+    .value { margin-top: 4px; font-size: 18px; letter-spacing: -.03em; color: var(--text); }
+    .hint { margin-top: 4px; font-size: 11px; color: var(--muted); }
+    .hint.scan { color: var(--link); }
+    .hint.warn { color: var(--warn); }
+    .kv { display: flex; justify-content: space-between; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+    .kv:last-child { border-bottom: 0; }
+    .kv .k { color: var(--muted); }
+    .head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--text); }
+    .big { margin: 8px 0 0; font-size: 28px; letter-spacing: -.03em; color: var(--text); }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 400; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--hover); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: top; }
+    td.detail { color: var(--muted); }
+    tr.warn-row { background: var(--vscode-inputValidation-warningBackground, color-mix(in srgb, var(--warn) 12%, transparent)); }
+    .ok { color: var(--ok); } .warn { color: var(--warn); } .fail { color: var(--err); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--text); font-size: 12.5px;
+    }
+    .chip.on { background: var(--sel); border-color: var(--focus); color: var(--sel-fg, var(--text)); }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+    input, select {
+      width: 100%; height: 36px; padding: 0 12px; border-radius: 6px;
+      background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-fg); outline: none;
+    }
+    input:focus, select:focus { border-color: var(--focus); }
+    input::placeholder { color: var(--vscode-input-placeholderForeground, var(--muted)); }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 11.5px; }
+    .cmd { margin-top: 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--input-bg); padding: 12px; }
+    .note { margin-top: 16px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--warn)); background: var(--vscode-inputValidation-warningBackground, color-mix(in srgb, var(--warn) 10%, transparent)); border-radius: 8px; padding: 16px; font-size: 12.5px; color: var(--text); }
+    .busy { color: var(--warn); font-family: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace); font-size: 11px; min-width: 8px; }
+    details.opt { margin: 4px 0 16px; }
+    details.opt summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 12px; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .pkg { width: 100%; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; text-align: left; padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; font: inherit; }
+    .pkg:hover { background: var(--hover); }
+    .pkg .n { font-weight: 600; }
+    .pkg .c { color: var(--muted); font-size: 12px; }
+    .vers { padding: 0 16px 12px; border-bottom: 1px solid var(--border); }
+    .ver { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; font-size: 12.5px; }
+    .search { display: flex; gap: 8px; margin-bottom: 16px; max-width: 560px; }
+    .search input { flex: 1; }
+    .modal { position: fixed; inset: 0; background: color-mix(in srgb, var(--vscode-widget-shadow, #000) 55%, transparent); display: none; place-items: center; padding: 24px; }
+    .modal.show { display: grid; }
+    .dialog { width: 100%; max-width: 448px; background: var(--widget); border: 1px solid var(--border); border-radius: 12px; padding: 20px; color: var(--text); }
+    .field { margin-bottom: 12px; }
+    .summary { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+    .summary strong { font-size: 18px; }
+    .check { display: grid; grid-template-columns: 28px 1fr minmax(140px, 38%); gap: 12px; align-items: start; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .check:last-child { border-bottom: 0; }
+    .check-icon { width: 22px; height: 22px; border-radius: 99px; display: grid; place-items: center; font-size: 12px; border: 1px solid var(--border); }
+    .check-icon.ok { color: var(--ok); border-color: var(--ok); }
+    .check-icon.fail { color: var(--err); border-color: var(--err); }
+    .check-title { font-weight: 600; color: var(--text); }
+    .check-desc { margin-top: 3px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .check-result { font-size: 12px; color: var(--muted); text-align: right; word-break: break-all; }
+    @media (max-width: 860px) {
+      .grid4, .grid2 { grid-template-columns: 1fr; }
+      .topbar { height: auto; padding: 10px 12px; flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16.5 9.4 7.5 4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
+        Conan 控制台
+      </div>
+      <nav>
+        <button class="nav-btn active" data-view="download">拉取依赖</button>
+        <button class="nav-btn" data-view="catalog">仓库</button>
+        <button class="nav-btn" data-view="deps">依赖</button>
+        <button class="nav-btn" data-view="publish">发布</button>
+        <button class="nav-btn" data-view="settings">设置</button>
+        <button class="nav-btn" data-view="doctor">诊断</button>
+      </nav>
+      <div class="top-right">
+        <span class="badge"><span class="dot" id="login-dot"></span><span class="mono" id="login-badge">未登录</span></span>
+        <button class="badge" data-view="settings" id="platform-chip">- / -</button>
+        <span class="busy" id="busy"></span>
+      </div>
+    </div>
+
+    <div class="content">
+      <section class="page active" data-section="download">
+        <div class="headline">
+          <div>
+            <p class="kicker" id="workspace">工作区</p>
+            <h1 id="project-name">Conan</h1>
+            <p class="lede">选目标平台后拉取项目 conanfile 里的依赖（conan install，只取仓库二进制，不在本机编译）。</p>
+          </div>
+        </div>
+        <div class="grid2" style="margin-bottom:16px">
+          <div class="card"><div class="label" style="margin-bottom:8px">操作系统</div><div class="chips" id="os-pills"></div></div>
+          <div class="card"><div class="label" style="margin-bottom:8px">架构</div><div class="chips" id="arch-pills"></div></div>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="label" style="margin-bottom:8px">构建类型</div>
+          <div class="chips" id="bt-pills"></div>
+          <p class="hint" style="margin-top:8px">Debug 和 Release 是两套制品。拉取必须和发布时选的一样才能对上。</p>
+        </div>
+        <details class="opt" open>
+          <summary>更精确匹配（可选）</summary>
+          <div class="row3">
+            <div class="field" style="margin:0"><label>Qt 版本</label><input id="p-qt" placeholder="例如 6.8，可留空"></div>
+            <div class="field" style="margin:0"><label>编译器</label><input id="p-compiler" placeholder="gcc / clang / msvc"></div>
+            <div class="field" style="margin:0"><label>编译器版本</label><input id="p-compiler-ver" placeholder="11"></div>
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn" data-act="scan-fill">尝试获取</button>
+          </div>
+        </details>
+        <div class="field" style="max-width:360px">
+          <label>拉取到目录</label>
+          <input id="p-out" placeholder="lib">
+          <p class="hint">相对项目根目录，默认 lib。可改成任意子目录。</p>
+        </div>
+        <div class="actions">
+          <button class="btn" data-act="analyze">检查依赖</button>
+          <button class="btn" id="recipe-consume" data-act="recipe-consume">生成配方</button>
+          <button class="btn primary" data-act="install">拉取依赖</button>
+        </div>
+        <p class="hint" id="combo" style="margin-top:12px"></p>
+        <div class="card flat" style="margin-top:16px"><table><thead><tr><th>包</th><th>制品</th><th>说明</th></tr></thead><tbody id="dep-rows"></tbody></table></div>
+      </section>
+
+      <section class="page" data-section="catalog">
+        <div class="headline">
+          <div>
+            <h2>仓库组件</h2>
+            <p class="lede">查看远程仓库里已有的包和已发布版本。点开组件看版本，需要的话加入项目依赖。</p>
+          </div>
+          <button class="btn" data-act="catalog">刷新</button>
+        </div>
+        <div class="search">
+          <input id="cat-q" placeholder="按包名筛选，例如 qtutils">
+          <button class="btn primary" data-act="catalog">查询</button>
+        </div>
+        <p class="hint" id="cat-hint"></p>
+        <div class="card flat" id="cat-list"></div>
+      </section>
+
+      <section class="page" data-section="deps">
+        <div class="headline">
+          <div>
+            <h2>依赖</h2>
+            <p class="lede">当前配方里的包。拉取依赖时缺二进制不会在本机编译。</p>
+          </div>
+          <div class="actions">
+            <button class="btn" data-act="add">添加依赖</button>
+            <button class="btn primary" data-act="analyze">重新查找</button>
+          </div>
+        </div>
+        <div class="card flat"><table><thead><tr><th>包引用</th><th>制品</th><th>说明</th></tr></thead><tbody id="dep-rows-full"></tbody></table></div>
+      </section>
+
+      <section class="page" data-section="publish">
+        <h2>发布包</h2>
+        <p class="sub">先改包名和版本。点发布会先写入 conanfile.py，再打包上传。登录在设置里完成。</p>
+        <div style="max-width:640px">
+          <div class="card" style="margin:0 0 16px">
+            <div class="label" style="margin-bottom:8px">发布信息</div>
+            <div class="row3" style="margin-top:0">
+              <div class="field" style="margin:0"><label>包名</label><input id="pub-name" placeholder="例如 qtutils"></div>
+              <div class="field" style="margin:0"><label>版本</label><input id="pub-version" placeholder="例如 1.0"></div>
+              <div class="field" style="margin:0"><label>channel</label><input id="pub-channel" placeholder="dev"></div>
+            </div>
+            <div class="field" style="margin-top:12px;margin-bottom:0"><label>备注（可选）</label><input id="pub-note" placeholder="本次发布说明，可留空"></div>
+            <p class="hint" id="pub-recipe-hint" style="margin-top:10px"></p>
+          </div>
+          <div class="card" style="margin:0 0 16px">
+            <div class="label" style="margin-bottom:8px">发布平台：系统</div>
+            <div class="chips" id="pub-os"></div>
+            <div class="label" style="margin:12px 0 8px">发布平台：架构</div>
+            <div class="chips" id="pub-arch"></div>
+            <div class="label" style="margin:12px 0 8px">构建类型</div>
+            <div class="chips" id="pub-bt"></div>
+          </div>
+          <div class="row3">
+            <div class="field" style="margin:0"><label>Qt 版本</label><input id="pub-qt" placeholder="例如 6.8"></div>
+            <div class="field" style="margin:0"><label>编译器</label><input id="pub-compiler" placeholder="gcc / clang / msvc"></div>
+            <div class="field" style="margin:0"><label>编译器版本</label><input id="pub-compiler-ver" placeholder="13"></div>
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn" data-act="scan-fill">尝试获取</button>
+            <button class="btn" data-act="recipe-publish">生成发布配方</button>
+          </div>
+          <p class="hint" id="pub-meta" style="margin-top:12px"></p>
+          <button class="btn primary" style="margin-top:12px" data-act="publish-preview">确认并发布</button>
+        </div>
+      </section>
+
+      <section class="page" data-section="settings">
+        <h2>仓库登录</h2>
+        <p class="sub">已保存的地址和用户名会显示在下面，不必每次重填。密码不会回显，已保存则留空。</p>
+        <div style="max-width:520px">
+          <input id="g-name" type="hidden" value="nexus">
+          <div class="field"><label>Nexus Conan 地址</label><input id="g-url" placeholder="http://host:port/repository/conan-hosted/"></div>
+          <div class="field"><label>用户名</label><input id="g-user"></div>
+          <div class="field"><label>密码 / Token</label><input id="g-pass" type="password" placeholder="已保存则留空不改"></div>
+          <div class="actions">
+            <button class="btn" data-act="test">测试连接</button>
+            <button class="btn primary" data-act="save-global">保存并登录</button>
+          </div>
+          <p class="hint scan" id="g-hint" style="margin-top:12px"></p>
+        </div>
+      </section>
+
+      <section class="page" data-section="doctor">
+        <div class="headline">
+          <div>
+            <h2>诊断</h2>
+            <p class="lede">检查本机 Conan、项目配置和仓库登录是否就绪。红项需要处理，点右侧说明可对照设置页。</p>
+          </div>
+          <button class="btn" data-act="doctor">重新诊断</button>
+        </div>
+        <div class="summary" id="doctor-summary"></div>
+        <div class="card flat" id="doctor-list"></div>
+        <details class="card" style="margin-top:12px"><summary>高级 / 原始输出</summary><pre id="raw-out" class="mono" style="margin-top:12px"></pre></details>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="dialog">
+      <h2 style="font-size:15px">确认发布</h2>
+      <p class="lede" id="modal-text"></p>
+      <div class="actions" style="justify-content:flex-end;margin-top:16px">
+        <button class="btn" id="modal-cancel">取消</button>
+        <button class="btn primary" id="modal-ok">发布</button>
+      </div>
+    </div>
+  </div>
+
+  <script nonce="{{NONCE}}">
+    const api = acquireVsCodeApi();
+    const OS = [['windows','Windows'],['linux','Linux'],['kylin','麒麟']];
+    const ARCH = [['x86','x86 32 位'],['x64','x64 64 位'],['arm','ARM 32 位'],['arm64','ARM 64 位']];
+    const BUILD = [['Debug','Debug'],['Release','Release']];
+    const SKIP_CHECKS = { profiles:1, remotes:1, configured_remote:1, manifest_dependencies:1 };
+    let state = {status:{}, doctor:{}, analyze:{}, catalog:{}};
+    let osSel = '', archSel = '', btSel = '', pubOs = '', pubArch = '', pubBt = '', openPkg = '';
+    const $ = (id) => document.getElementById(id);
+    const show = (view) => {
+      if (view === 'overview') view = 'download';
+      document.querySelectorAll('[data-section]').forEach((el) => el.classList.toggle('active', el.dataset.section === view));
+      document.querySelectorAll('.nav-btn[data-view]').forEach((el) => el.classList.toggle('active', el.dataset.view === view));
+      if (view === 'catalog' && !((state.catalog && state.catalog.packages) || []).length) {
+        api.postMessage({type:'catalog', query: $('cat-q').value.trim()});
+      }
+    };
+    const pills = (el, items, current, setter) => {
+      el.innerHTML = items.map(([id, label]) => `<button class="chip ${id===current?'on':''}" data-id="${id}">${label}</button>`).join('');
+      el.querySelectorAll('button').forEach((b) => b.onclick = () => { setter(b.dataset.id); persistPlatform(); render(); });
+    };
+    const persistPlatform = () => {
+      const payload = {};
+      if (osSel && archSel) { payload.os = osSel; payload.arch = archSel; }
+      if (btSel) payload.buildType = btSel;
+      if (pubOs) payload.publishOs = pubOs;
+      if (pubArch) payload.publishArch = pubArch;
+      if (pubBt) payload.publishBuildType = pubBt;
+      if (Object.keys(payload).length) api.postMessage({type:'save-project-quiet', payload});
+    };
+    const outDir = () => ($('p-out').value.trim() || 'lib').replace(/\\/g, '/');
+    const persistMatch = () => {
+      api.postMessage({type:'save-project-quiet', payload:{
+        qt:$('p-qt').value.trim(), compiler:$('p-compiler').value.trim(), compilerVersion:$('p-compiler-ver').value.trim(),
+        os:osSel, arch:archSel, buildType: btSel || 'Release', outputFolder: outDir()
+      }});
+    };
+    const project = () => (state.status && state.status.project) || {};
+    const global = () => (state.status && state.status.global) || {nexus:{}};
+    function depRow(r) {
+      return `<tr class="${r.status==='found'||r.status==='unknown'?'':'warn-row'}"><td class="mono">${esc(r.reference)}</td><td class="${r.status==='found'?'ok':'warn'}">${esc(statusLabel(r.status))}</td><td class="detail">${esc(r.detail||'')}</td></tr>`;
+    }
+    function render() {
+      const p = project();
+      const g = global();
+      const plat = (p.platform && p.platform.consume) || {};
+      osSel = osSel || plat.os || '';
+      archSel = archSel || plat.arch || '';
+      btSel = btSel || plat.build_type || 'Release';
+      pubOs = pubOs || (p.platform && p.platform.publish && p.platform.publish.os) || osSel;
+      pubArch = pubArch || (p.platform && p.platform.publish && p.platform.publish.arch) || archSel;
+      pubBt = pubBt || (p.platform && p.platform.publish && p.platform.publish.build_type) || btSel || 'Release';
+      $('workspace').textContent = '工作区 / ' + (p.name || '未初始化');
+      $('project-name').textContent = p.name || '选择目标平台后拉取依赖';
+      const nexus = g.nexus || {};
+      const probeNow = state.probe || {};
+      $('login-badge').textContent = probeNow.ok ? '已连接' : (g.has_password ? '已登录' : '未登录');
+      $('login-dot').className = 'dot' + (probeNow.ok || g.has_password ? '' : ' warn');
+      $('platform-chip').textContent = (osSel || archSel) ? (displayOs(osSel) + ' / ' + displayArch(archSel) + ' · ' + (btSel || 'Release')) : '未选平台';
+      const rows = (state.analyze && state.analyze.dependencies) || [];
+      const empty = '<tr><td colspan="3" class="detail">选好平台后点「检查依赖」或「拉取依赖」</td></tr>';
+      $('dep-rows').innerHTML = rows.map(depRow).join('') || empty;
+      $('dep-rows-full').innerHTML = rows.map(depRow).join('') || empty;
+      pills($('os-pills'), OS, osSel, (v) => osSel = v);
+      pills($('arch-pills'), ARCH, archSel, (v) => archSel = v);
+      pills($('bt-pills'), BUILD, btSel, (v) => btSel = v);
+      pills($('pub-os'), OS, pubOs, (v) => pubOs = v);
+      pills($('pub-arch'), ARCH, pubArch, (v) => pubArch = v);
+      pills($('pub-bt'), BUILD, pubBt, (v) => pubBt = v);
+      $('combo').textContent = (osSel && archSel)
+        ? ('将按 ' + displayOs(osSel) + ' / ' + displayArch(archSel) + ' · ' + (btSel || 'Release') + ' 拉取到 ' + outDir() + '/' + (g.has_password ? '' : '。请先到设置里登录仓库'))
+        : '请先选操作系统和架构';
+      const recipe = (state.status && state.status.recipe) || {};
+      if (!$('pub-name').dataset.touched) $('pub-name').value = recipe.name || p.name || '';
+      if (!$('pub-version').dataset.touched) $('pub-version').value = recipe.version || '';
+      if (!$('pub-channel').dataset.touched) $('pub-channel').value = p.channel || 'dev';
+      if (!$('pub-qt').dataset.touched) $('pub-qt').value = p.qt_version || '';
+      if (!$('pub-compiler').dataset.touched) $('pub-compiler').value = (p.compiler && p.compiler.id) || '';
+      if (!$('pub-compiler-ver').dataset.touched) $('pub-compiler-ver').value = (p.compiler && p.compiler.version) || '';
+      const pubName = $('pub-name').value.trim();
+      const pubVer = $('pub-version').value.trim();
+      const pubReady = pubName && pubVer && pubOs && pubArch && $('pub-qt').value.trim() && $('pub-compiler').value.trim() && $('pub-compiler-ver').value.trim();
+      $('pub-meta').textContent = pubReady
+        ? (pubName + '/' + pubVer + ' · ' + displayOs(pubOs) + ' / ' + displayArch(pubArch) + ' · ' + (pubBt || 'Release') + ' · ' + $('pub-compiler').value.trim() + ' ' + $('pub-compiler-ver').value.trim() + ' · Qt ' + $('pub-qt').value.trim() + (g.has_password ? ' · 已登录' : ' · 未登录'))
+        : '请填完包名、版本、发布平台、编译器和 Qt 版本';
+      const hasPy = state.status && state.status.conanfile === 'conanfile.py';
+      if (recipe.kind === 'consume') $('pub-recipe-hint').textContent = '当前是消费配方。点发布会改成发布配方，再把包名/版本写入 conanfile.py 并打包上传。';
+      else if (!hasPy) $('pub-recipe-hint').textContent = '还没有 conanfile.py。点发布会先生成发布配方，再打包上传。';
+      else $('pub-recipe-hint').textContent = '点发布会先把上面的包名和版本写入 conanfile.py，再打包上传。手工配方只改 name/version，不会覆盖 build()。';
+      document.querySelectorAll('[data-act="publish-preview"]').forEach((b) => { b.disabled = !pubReady; });
+      if (!$('g-url').dataset.touched) $('g-url').value = nexus.url || '';
+      if (!$('g-user').dataset.touched) $('g-user').value = nexus.username || '';
+      $('g-name').value = nexus.name || 'nexus';
+      const probe = state.probe || {};
+      const bits = [];
+      if (nexus.url) bits.push('地址 ' + nexus.url);
+      if (nexus.username) bits.push('用户 ' + nexus.username);
+      if (g.has_password) bits.push('密码已保存');
+      if (probe.ok === true) bits.push('仓库可达');
+      if (probe.ok === false) bits.push('连接失败' + (probe.message ? '：' + probe.message : ''));
+      $('g-hint').textContent = bits.length ? bits.join(' · ') : '还没有仓库配置，填一次后保存即可。';
+      if (!$('p-qt').dataset.touched) $('p-qt').value = p.qt_version || '';
+      if (!$('p-compiler').dataset.touched) $('p-compiler').value = (p.compiler && p.compiler.id) || '';
+      if (!$('p-compiler-ver').dataset.touched) $('p-compiler-ver').value = (p.compiler && p.compiler.version) || '';
+      if (!$('p-out').dataset.touched) $('p-out').value = p.output_folder || 'lib';
+      document.querySelectorAll('[data-act="install"]').forEach((b) => { b.disabled = !(osSel && archSel); });
+      const recipeBtn = $('recipe-consume');
+      if (recipeBtn) {
+        recipeBtn.textContent = hasPy ? '配方就绪' : '生成配方';
+        recipeBtn.classList.toggle('ready', !!hasPy);
+        recipeBtn.disabled = !!hasPy;
+        recipeBtn.title = hasPy ? '已有 conanfile.py' : '生成消费用 conanfile.py';
+      }
+      const checks = ((state.doctor && state.doctor.checks) || []).filter((c) => !SKIP_CHECKS[c.name]);
+      const failed = checks.filter((c) => !c.ok).length;
+      $('doctor-summary').innerHTML = checks.length
+        ? (failed ? `<strong class="warn">${failed} 项需要处理</strong><span class="hint">共 ${checks.length} 项</span>` : `<strong class="ok">就绪</strong><span class="hint">共 ${checks.length} 项</span>`)
+        : '';
+      $('doctor-list').innerHTML = checks.map((c) => {
+        const meta = checkMeta(c.name);
+        return `<div class="check"><div class="check-icon ${c.ok?'ok':'fail'}">${c.ok?'✓':'!'}</div><div><div class="check-title">${esc(meta.title)}</div><div class="check-desc">${esc(c.ok ? meta.ok : meta.fail)}</div></div><div class="check-result">${esc(friendlyDetail(c.name, c.detail))}</div></div>`;
+      }).join('') || '<div class="hint" style="padding:16px">还没有诊断结果。</div>';
+      $('raw-out').textContent = state.raw || '';
+      renderCatalog();
+    }
+    function renderCatalog() {
+      const packages = (state.catalog && state.catalog.packages) || [];
+      const err = state.catalogError || '';
+      $('cat-hint').textContent = err || (packages.length ? ('共 ' + packages.length + ' 个组件') : '还没有结果，点查询。');
+      $('cat-list').innerHTML = packages.map((pkg) => {
+        const open = openPkg === pkg.name;
+        const vers = (pkg.versions || []).map((ver) => {
+          const ref = pkg.name + '/' + ver;
+          return `<div class="ver"><span class="mono">${esc(ref)}</span><button class="btn" data-add="${esc(ref)}">加入依赖</button></div>`;
+        }).join('') || '<p class="hint">没有版本信息</p>';
+        return `<button class="pkg" data-pkg="${esc(pkg.name)}"><span class="n">${esc(pkg.name)}</span><span class="c">${(pkg.versions||[]).length} 个版本</span></button>${open ? `<div class="vers">${vers}</div>` : ''}`;
+      }).join('') || `<div class="hint" style="padding:16px">${esc(err || '仓库里还没有组件，或还没查询。')}</div>`;
+      $('cat-list').querySelectorAll('[data-pkg]').forEach((b) => b.onclick = () => {
+        openPkg = openPkg === b.dataset.pkg ? '' : b.dataset.pkg;
+        renderCatalog();
+      });
+      $('cat-list').querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        api.postMessage({type:'add-ref', ref: b.dataset.add});
+      });
+    }
+    function displayOs(v){ return ({windows:'Windows',linux:'Linux',kylin:'麒麟'}[v]||v||'-'); }
+    function displayArch(v){ return ({x86:'x86 32 位',x64:'x64 64 位',arm:'ARM 32 位',arm64:'ARM 64 位'}[v]||v||'-'); }
+    const CHECKS = {
+      conan: { title: 'Conan 是否可用', ok: '本机可以运行 Conan 2。', fail: '找不到 Conan，请先安装 Conan 2。' },
+      project_config: { title: '项目配置', ok: '已有项目配置。', fail: '选平台并拉取依赖时会自动创建。' },
+      conanfile: { title: '配方文件', ok: '已有 conanfile。', fail: '缺少配方。拉取依赖时会生成最简 conanfile.txt。' },
+      global_remote: { title: '仓库登录', ok: 'Nexus 地址和账号已保存。', fail: '请到设置里填写地址、用户名并保存登录。' },
+      platform: { title: '目标平台', ok: '已选择制品要跑的系统和架构。', fail: '到「拉取依赖」页点选操作系统和架构即可。' },
+    };
+    function checkMeta(name) {
+      return CHECKS[name] || { title: name, ok: '检查通过。', fail: '检查未通过。' };
+    }
+    function friendlyDetail(name, detail) {
+      const text = String(detail || '').trim();
+      if (name === 'conan' && /Conan version/i.test(text)) return text.replace(/^Conan version/i, '版本');
+      if (name === 'project_config' && text.includes('project.yaml')) return '路径：' + text;
+      return text;
+    }
+    function statusLabel(v){ return ({found:'已找到',missing_binary:'无匹配二进制',missing_package:'无此包',missing_version:'无此版本',mismatch:'不一致',unknown:'未查询'}[v]||v); }
+    function esc(v){ return String(v??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+    document.querySelectorAll('[data-view]').forEach((b)=>b.addEventListener('click', () => show(b.dataset.view)));
+    document.querySelectorAll('[data-act]').forEach((b)=>b.addEventListener('click', () => act(b.dataset.act)));
+    ['pub-name','pub-version','pub-channel','pub-note','pub-qt','pub-compiler','pub-compiler-ver','g-url','g-user','g-pass'].forEach((id)=>$(id).addEventListener('input',()=>{ $(id).dataset.touched='1'; render(); }));
+    ['p-qt','p-compiler','p-compiler-ver','p-out'].forEach((id)=>$(id).addEventListener('change', () => { $(id).dataset.touched='1'; persistMatch(); }));
+    $('cat-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') act('catalog'); });
+    $('modal-cancel').onclick=()=>$('modal').classList.remove('show');
+    $('modal-ok').onclick=()=>{ $('modal').classList.remove('show'); api.postMessage({type:'publish', payload: publishPayload()}); };
+    function publishPayload(){
+      return {
+        name:$('pub-name').value.trim(), version:$('pub-version').value.trim(),
+        channel:$('pub-channel').value.trim() || 'dev', note:$('pub-note').value.trim(),
+        os:pubOs, arch:pubArch, buildType: pubBt || 'Release', qt:$('pub-qt').value.trim(),
+        compiler:$('pub-compiler').value.trim(), compilerVersion:$('pub-compiler-ver').value.trim()
+      };
+    }
+    function act(name){
+      if(name==='publish-preview'){
+        const pld = publishPayload();
+        if (!(pld.name && pld.version && pld.os && pld.arch && pld.qt && pld.compiler && pld.compilerVersion)) return;
+        $('modal-text').textContent = '将把 conanfile.py 改为 ' + pld.name + '/' + pld.version + '，然后打包上传 · ' + displayOs(pld.os) + ' / ' + displayArch(pld.arch) + ' · ' + (pld.buildType || 'Release') + ' · ' + pld.compiler + ' ' + pld.compilerVersion + ' · Qt ' + pld.qt + ' · channel ' + pld.channel;
+        $('modal').classList.add('show');
+        return;
+      }
+      if(name==='add'){ api.postMessage({type:'add'}); return; }
+      if(name==='save-global'){ api.postMessage({type:'save-global', payload:{name:$('g-name').value||'nexus', url:$('g-url').value, username:$('g-user').value, password:$('g-pass').value}}); return; }
+      if(name==='install' && !(osSel && archSel)){ return; }
+      if(name==='catalog'){ api.postMessage({type:'catalog', query:$('cat-q').value.trim()}); return; }
+      if(name==='scan-fill'){ api.postMessage({type:'scan-fill'}); return; }
+      if(name==='recipe-consume'){
+        if (state.status && state.status.conanfile === 'conanfile.py') return;
+        api.postMessage({type:'recipe-generate', kind:'consume', qt:$('p-qt').value.trim()});
+        return;
+      }
+      if(name==='recipe-publish'){ api.postMessage({type:'recipe-generate', kind:'publish', name:$('pub-name').value.trim(), version:$('pub-version').value.trim(), qt:$('pub-qt').value.trim()}); return; }
+      if(name==='install'){ persistMatch(); api.postMessage({type:'install', os:osSel, arch:archSel, buildType: btSel || 'Release', outputFolder: outDir()}); return; }
+      if(name==='analyze'){ persistMatch(); api.postMessage({type:'analyze', os:osSel, arch:archSel, buildType: btSel || 'Release'}); return; }
+      api.postMessage({type:name, os:osSel, arch:archSel});
+    }
+    window.addEventListener('message', (e) => {
+      const m = e.data || {};
+      if (m.type === 'busy') $('busy').textContent = m.label || '';
+      if (m.type === 'open-view' && m.view) show(m.view);
+      if (m.type === 'catalog') {
+        state.catalog = m.catalog || {};
+        state.catalogError = m.error || '';
+        $('busy').textContent = '';
+        renderCatalog();
+      }
+      if (m.type === 'scan-fill') {
+        const s = m.scan || {};
+        const installs = s.qt_installs || [];
+        const qt = installs[0] ? (installs[0].short || installs[0].version) : '';
+        const compiler = s.compiler || {};
+        ['p-qt','pub-qt'].forEach((id) => { if (qt && $(id)) { $(id).value = qt; $(id).dataset.touched = '1'; } });
+        ['p-compiler','pub-compiler'].forEach((id) => { if (compiler.id && $(id)) { $(id).value = compiler.id; $(id).dataset.touched = '1'; } });
+        ['p-compiler-ver','pub-compiler-ver'].forEach((id) => { if (compiler.version && $(id)) { $(id).value = compiler.version; $(id).dataset.touched = '1'; } });
+        $('busy').textContent = '';
+        render();
+        return;
+      }
+      if (m.type === 'probe') { state.probe = m.probe || {}; render(); }
+      if (m.type === 'state') { state = Object.assign(state, m); $('busy').textContent = ''; render(); }
+    });
+    render();
+    api.postMessage({type:'refresh'});
+  </script>
+</body>
+</html>

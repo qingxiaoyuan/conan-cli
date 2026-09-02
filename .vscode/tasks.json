@@ -1,0 +1,11 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "conan-cli: build",
+      "type": "shell",
+      "command": "go build -o bin/conan-cli ./cmd/conan-cli",
+      "problemMatcher": "$go"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "name": "conan-cli-vscode",
+  "displayName": "Conan CLI",
+  "description": "在 Visual Studio Code 中管理 Conan 项目。",
+  "version": "0.4.14",
+  "publisher": "local",
+  "icon": "media/conan.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:conanCli.actions",
+    "onCommand:conanCli.openDashboard",
+    "onCommand:conanCli.init",
+    "onCommand:conanCli.install",
+    "onCommand:conanCli.doctor",
+    "onCommand:conanCli.add",
+    "onCommand:conanCli.search",
+    "onCommand:conanCli.publish",
+    "onCommand:conanCli.scan",
+    "onCommand:conanCli.analyze",
+    "onCommand:conanCli.showOutput",
+    "onCommand:conanCli.refresh"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Conan CLI",
+      "properties": {
+        "conanCli.binary": {
+          "type": "string",
+          "default": "",
+          "description": "conan-cli 路径。留空使用插件自带的 CLI；也可填绝对路径或 ${workspaceFolder}/bin/conan-cli。"
+        },
+        "conanCli.showCommandOutput": {
+          "type": "boolean",
+          "default": true,
+          "description": "命令完成后显示 Conan CLI 输出面板。"
+        }
+      }
+    },
+    "commands": [
+      { "command": "conanCli.init", "title": "Conan：初始化项目", "icon": "$(repo-create)" },
+      { "command": "conanCli.install", "title": "Conan：安装依赖", "icon": "$(cloud-download)" },
+      { "command": "conanCli.doctor", "title": "Conan：运行诊断", "icon": "$(heart)" },
+      { "command": "conanCli.add", "title": "Conan：添加依赖", "icon": "$(add)" },
+      { "command": "conanCli.search", "title": "Conan：搜索包", "icon": "$(search)" },
+      { "command": "conanCli.publish", "title": "Conan：发布包", "icon": "$(cloud-upload)" },
+      { "command": "conanCli.scan", "title": "Conan：扫描 Qt/编译器", "icon": "$(search)" },
+      { "command": "conanCli.analyze", "title": "Conan：依赖分析", "icon": "$(graph)" },
+      { "command": "conanCli.showOutput", "title": "Conan：查看输出", "icon": "$(output)" },
+      { "command": "conanCli.refresh", "title": "Conan：刷新操作区", "icon": "$(refresh)" },
+      { "command": "conanCli.openDashboard", "title": "Conan：打开控制台", "icon": "$(dashboard)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "conanCli",
+          "title": "Conan",
+          "icon": "media/conan.svg"
+        }
+      ]
+    },
+    "views": {
+      "conanCli": [
+        {
+          "id": "conanCli.actions",
+          "name": "控制台",
+          "type": "webview",
+          "icon": "media/conan.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "conanCli.openDashboard",
+          "when": "view == conanCli.actions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "conanCli.refresh",
+          "when": "view == conanCli.actions",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

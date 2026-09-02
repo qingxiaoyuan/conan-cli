@@ -1,0 +1,7 @@
+bin/
+dist/
+.conan-cli/cache/
+conan/
+build/
+*.log
+vscode/*.vsix

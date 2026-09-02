@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conan CLI — VS Code 工作台设计稿</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@0.462.0"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Inter, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .chip-on { background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.45); color: #d1fae5; }
+</style>
+</head>
+<body class="bg-[#060708] min-h-screen antialiased text-zinc-300">
+
+<div class="max-w-7xl mx-auto px-6 pt-10 pb-4">
+  <div class="flex items-center gap-3">
+    <span class="text-[13px] font-semibold tracking-tight text-white">Conan CLI</span>
+    <span class="text-[11px] px-2 py-0.5 rounded-full border border-white/10 text-zinc-500">设计稿 · 工作台</span>
+  </div>
+  <h1 class="mt-3 text-[28px] font-semibold tracking-tight text-white">VS Code 控制台</h1>
+  <p class="mt-1 text-[13px] text-zinc-500 max-w-2xl">可点击切换。覆盖初始化、扫描 Qt/编译器、按操作系统和架构分析下载、全局/项目设置、发布填表。按钮只触发 CLI，不在本机编译缺失二进制。</p>
+</div>
+
+<div class="max-w-7xl mx-auto px-6 pb-16">
+  <div class="h-[860px] rounded-xl border border-white/10 bg-[#0B0C0E] flex flex-col overflow-hidden shadow-2xl shadow-black/60">
+
+    <div class="h-14 px-5 flex items-center gap-3 border-b border-white/5 shrink-0">
+      <div class="flex items-center gap-2">
+        <i data-lucide="package" class="w-4 h-4 text-emerald-400"></i>
+        <span class="text-[14px] font-semibold tracking-tight text-white">Conan 控制台</span>
+      </div>
+      <nav class="flex items-center gap-1 ml-2 flex-wrap" id="nav">
+        <button data-view="overview" class="nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium text-white bg-white/[0.07] border border-white/[0.07]">概览</button>
+        <button data-view="deps" class="nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors">依赖分析</button>
+        <button data-view="download" class="nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors">下载</button>
+        <button data-view="publish" class="nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors">发布</button>
+        <button data-view="settings" class="nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors">设置</button>
+        <button data-view="doctor" class="nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors">诊断</button>
+      </nav>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="hidden sm:flex items-center gap-2 h-8 px-2.5 rounded-md border border-white/[0.07] text-[11.5px] text-zinc-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span class="mono">nexus 已登录</span>
+        </span>
+        <button data-view="settings" class="h-8 px-2.5 rounded-md border border-white/[0.07] text-[11.5px] text-zinc-400 hover:text-zinc-200 transition-colors">麒麟 / x64</button>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-y-auto">
+
+      <!-- 概览 -->
+      <section id="overview" class="view active p-6">
+        <div class="flex items-end justify-between gap-4 mb-5">
+          <div>
+            <p class="text-[11px] text-zinc-500">工作区 / qt-console</p>
+            <h2 class="mt-1 text-[26px] font-semibold tracking-tight text-white">conan-demo</h2>
+            <p class="mt-1 text-[12.5px] text-zinc-500">已读取 conanfile.py 与 .conan-cli/project.yaml。探测结果可写入设置，未确认前不覆盖手工值。</p>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button class="h-9 px-3 rounded-md border border-white/[0.1] text-[12px] text-zinc-300 hover:border-white/20">初始化 / 刷新配置</button>
+            <button class="h-9 px-3 rounded-md border border-white/[0.1] text-[12px] text-zinc-300 hover:border-white/20">扫描 Qt 与编译器</button>
+            <button data-view="download" class="h-9 px-3 rounded-md bg-emerald-500 text-[#08120f] text-[12px] font-semibold hover:bg-emerald-400">按平台下载</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <div class="rounded-lg border border-white/[0.07] bg-white/[0.02] p-4">
+            <p class="text-[10.5px] text-zinc-500">使用平台</p>
+            <p class="mt-1 text-[18px] tracking-tight text-white">麒麟 / x64</p>
+            <p class="mt-1 text-[11px] text-zinc-500">发布平台相同 · 可在设置拆开</p>
+          </div>
+          <div class="rounded-lg border border-white/[0.07] bg-white/[0.02] p-4">
+            <p class="text-[10.5px] text-zinc-500">Qt 版本</p>
+            <p class="mt-1 text-[18px] tracking-tight text-white">6.8</p>
+            <p class="mt-1 text-[11px] text-emerald-400/90">扫描自 demo.pro · 可改</p>
+          </div>
+          <div class="rounded-lg border border-white/[0.07] bg-white/[0.02] p-4">
+            <p class="text-[10.5px] text-zinc-500">编译器</p>
+            <p class="mt-1 text-[18px] tracking-tight text-white">gcc 11</p>
+            <p class="mt-1 text-[11px] text-emerald-400/90">扫描自本机 g++</p>
+          </div>
+          <div class="rounded-lg border border-white/[0.07] bg-white/[0.02] p-4">
+            <p class="text-[10.5px] text-zinc-500">构建系统</p>
+            <p class="mt-1 text-[18px] tracking-tight text-white">qmake</p>
+            <p class="mt-1 text-[11px] text-zinc-500">channel dev · 只下载二进制</p>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-[1.4fr_1fr] gap-4">
+          <div class="rounded-lg border border-white/[0.07] overflow-hidden">
+            <div class="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+              <p class="text-[13px] font-medium text-white">探测与项目配置</p>
+              <button data-view="settings" class="text-[11.5px] text-emerald-400">去设置里改</button>
+            </div>
+            <div class="divide-y divide-white/[0.05] text-[12.5px]">
+              <div class="px-4 py-3 flex justify-between gap-4"><span class="text-zinc-500">配方</span><span class="mono text-zinc-200">conanfile.py · 静态 requires</span></div>
+              <div class="px-4 py-3 flex justify-between gap-4"><span class="text-zinc-500">输出目录</span><span class="mono text-zinc-200">conan/</span></div>
+              <div class="px-4 py-3 flex justify-between gap-4"><span class="text-zinc-500">全局仓库</span><span class="mono text-zinc-200">nexus · 已登录 alice</span></div>
+              <div class="px-4 py-3 flex justify-between gap-4"><span class="text-zinc-500">缺二进制策略</span><span class="text-zinc-200">只下载，不在本机编译</span></div>
+            </div>
+          </div>
+          <div class="rounded-lg border border-white/[0.07] p-4">
+            <p class="text-[13px] font-medium text-white">最近一次分析</p>
+            <p class="mt-2 text-[28px] tracking-tight text-white">2 / 3</p>
+            <p class="text-[12px] text-zinc-500">直接依赖在「麒麟 / x64 + gcc 11 + Qt 6.8」上找到制品</p>
+            <p class="mt-3 text-[12px] text-amber-300">qtutils/1.0 无匹配二进制。改平台或检查仓库，不要本地编译。</p>
+            <button data-view="deps" class="mt-4 h-8 px-3 rounded-md border border-white/10 text-[12px] text-zinc-300">查看依赖分析</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 依赖分析 -->
+      <section id="deps" class="view p-6">
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
+          <div>
+            <h2 class="text-[22px] font-semibold tracking-tight text-white">依赖分析</h2>
+            <p class="mt-1 text-[12.5px] text-zinc-500">对照 project.yaml 与 conanfile。制品状态按当前使用平台查询 Nexus，不展开间接依赖树。</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="h-8 px-2.5 rounded-md border border-white/10 text-[12px] text-zinc-300">麒麟</span>
+            <span class="h-8 px-2.5 rounded-md border border-white/10 text-[12px] text-zinc-300">x64</span>
+            <button class="h-8 px-3 rounded-md bg-emerald-500 text-[#08120f] text-[12px] font-semibold">重新分析</button>
+            <button class="h-8 px-3 rounded-md border border-white/10 text-[12px] text-zinc-300">添加依赖</button>
+          </div>
+        </div>
+        <div class="rounded-lg border border-white/[0.07] overflow-hidden">
+          <div class="grid grid-cols-[1.2fr_.7fr_.9fr_1.4fr] px-4 py-2 text-[11px] text-zinc-500 border-b border-white/[0.06] bg-white/[0.02]">
+            <span>包引用</span><span>来源</span><span>制品</span><span>说明</span>
+          </div>
+          <div class="grid grid-cols-[1.2fr_.7fr_.9fr_1.4fr] px-4 py-3 text-[12.5px] border-b border-white/[0.05] items-center">
+            <span class="mono text-zinc-100">fmt/10.2.1</span>
+            <span class="text-zinc-400">两边一致</span>
+            <span class="text-emerald-400">已找到</span>
+            <span class="text-zinc-500">麒麟 / x64 · gcc 11 · Qt 6.8</span>
+          </div>
+          <div class="grid grid-cols-[1.2fr_.7fr_.9fr_1.4fr] px-4 py-3 text-[12.5px] border-b border-white/[0.05] items-center">
+            <span class="mono text-zinc-100">nlohmann_json/3.11.3</span>
+            <span class="text-zinc-400">两边一致</span>
+            <span class="text-emerald-400">已找到</span>
+            <span class="text-zinc-500">header-only，任意平台可用</span>
+          </div>
+          <div class="grid grid-cols-[1.2fr_.7fr_.9fr_1.4fr] px-4 py-3 text-[12.5px] items-center bg-amber-500/[0.04]">
+            <span class="mono text-zinc-100">qtutils/1.0</span>
+            <span class="text-zinc-400">两边一致</span>
+            <span class="text-amber-300">无匹配二进制</span>
+            <span class="text-zinc-400">仓库有 linux/x64，无麒麟/x64。请改平台或请库作者按该组合发布。</span>
+          </div>
+        </div>
+        <div class="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/[0.05] p-4 text-[12.5px] text-zinc-300">
+          缺包时不会执行 <span class="mono text-zinc-200">--build=missing</span>。原始 Conan 输出可在诊断页展开。
+        </div>
+      </section>
+
+      <!-- 下载 -->
+      <section id="download" class="view p-6">
+        <h2 class="text-[22px] font-semibold tracking-tight text-white">按平台下载</h2>
+        <p class="mt-1 mb-5 text-[12.5px] text-zinc-500">先选操作系统和架构，再查找制品。编译器与 Qt 使用项目设置，不塞进「平台」两个字里。</p>
+        <div class="grid lg:grid-cols-2 gap-4 mb-5">
+          <div class="rounded-lg border border-white/[0.07] p-4">
+            <p class="text-[12px] text-zinc-500 mb-2">操作系统</p>
+            <div class="flex flex-wrap gap-2" id="os-pills">
+              <button data-os="windows" class="os-pill h-9 px-3 rounded-md border border-white/10 text-[12.5px]">Windows</button>
+              <button data-os="linux" class="os-pill h-9 px-3 rounded-md border border-white/10 text-[12.5px]">Linux</button>
+              <button data-os="kylin" class="os-pill h-9 px-3 rounded-md border border-white/10 text-[12.5px] chip-on">麒麟</button>
+            </div>
+          </div>
+          <div class="rounded-lg border border-white/[0.07] p-4">
+            <p class="text-[12px] text-zinc-500 mb-2">架构</p>
+            <div class="flex flex-wrap gap-2" id="arch-pills">
+              <button data-arch="x86" class="arch-pill h-9 px-3 rounded-md border border-white/10 text-[12.5px]">x86</button>
+              <button data-arch="x64" class="arch-pill h-9 px-3 rounded-md border border-white/10 text-[12.5px] chip-on">x64</button>
+              <button data-arch="arm" class="arch-pill h-9 px-3 rounded-md border border-white/10 text-[12.5px]">ARM</button>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-lg border border-white/[0.07] p-4 mb-4 text-[12.5px]">
+          <p class="text-zinc-500">将使用的组合（下载前可预览）</p>
+          <p class="mt-2 mono text-zinc-200" id="combo-preview">os=kylin  arch=x64  compiler=gcc 11  qt=6.8  remote=nexus  output=conan/</p>
+          <p class="mt-2 text-zinc-500">对应命令：<span class="mono text-zinc-300">conan-cli install --os kylin --arch x64</span></p>
+        </div>
+        <div class="flex gap-2">
+          <button class="h-9 px-4 rounded-md border border-white/10 text-[12.5px] text-zinc-200">查找制品</button>
+          <button class="h-9 px-4 rounded-md bg-emerald-500 text-[#08120f] text-[12.5px] font-semibold">下载已找到的二进制</button>
+        </div>
+      </section>
+
+      <!-- 发布 -->
+      <section id="publish" class="view p-6">
+        <h2 class="text-[22px] font-semibold tracking-tight text-white">发布包</h2>
+        <p class="mt-1 mb-5 text-[12.5px] text-zinc-500">登录只在设置页录入。这里填发布信息，确认后再跑 create + upload。</p>
+        <div class="grid lg:grid-cols-2 gap-4">
+          <div class="space-y-3">
+            <label class="block text-[12px] text-zinc-500">包名 <input value="qtutils" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <label class="block text-[12px] text-zinc-500">版本 <input value="1.0" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <label class="block text-[12px] text-zinc-500">channel <input value="dev" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <label class="block text-[12px] text-zinc-500">备注（可选） <input placeholder="本次修复麒麟 x64 工具链" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/40"></label>
+          </div>
+          <div class="rounded-lg border border-white/[0.07] p-4">
+            <p class="text-[12px] text-zinc-500 mb-3">发布平台（可与使用平台不同）</p>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <span class="h-8 px-3 rounded-md border border-white/10 text-[12px]">Windows</span>
+              <span class="h-8 px-3 rounded-md border border-white/10 text-[12px]">Linux</span>
+              <span class="h-8 px-3 rounded-md border chip-on text-[12px]">麒麟</span>
+            </div>
+            <div class="flex flex-wrap gap-2 mb-4">
+              <span class="h-8 px-3 rounded-md border border-white/10 text-[12px]">x86</span>
+              <span class="h-8 px-3 rounded-md border chip-on text-[12px]">x64</span>
+              <span class="h-8 px-3 rounded-md border border-white/10 text-[12px]">ARM</span>
+            </div>
+            <div class="text-[12.5px] space-y-1.5 text-zinc-400">
+              <p>远程：<span class="text-zinc-200">nexus</span>（全局设置）</p>
+              <p>登录：<span class="text-emerald-400">alice 有效</span></p>
+              <p>编译器 / Qt：gcc 11 · 6.8</p>
+            </div>
+            <div class="mt-4 rounded-md border border-white/[0.08] bg-black/30 p-3 mono text-[11.5px] text-zinc-300">
+              conan-cli publish --remote nexus --channel dev --os kylin --arch x64 --ref qtutils/1.0
+            </div>
+            <button id="confirm-publish" class="mt-4 w-full h-9 rounded-md bg-emerald-500 text-[#08120f] text-[12.5px] font-semibold">确认并发布</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section id="settings" class="view p-6">
+        <div class="flex items-center gap-2 mb-5">
+          <button id="set-global" class="h-8 px-3 rounded-md text-[12.5px] font-medium text-white bg-white/[0.07] border border-white/[0.07]">全局</button>
+          <button id="set-project" class="h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200">项目</button>
+        </div>
+
+        <div id="settings-global">
+          <h2 class="text-[22px] font-semibold tracking-tight text-white">全局设置</h2>
+          <p class="mt-1 mb-5 text-[12.5px] text-zinc-500">本机用户配置，不进项目 git。密码不出现在命令行和日志里。</p>
+          <div class="max-w-xl space-y-3">
+            <label class="block text-[12px] text-zinc-500">仓库名称 <input value="nexus" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <label class="block text-[12px] text-zinc-500">Nexus Conan 地址 <input value="https://nexus.example.com/repository/conan-hosted/" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <label class="block text-[12px] text-zinc-500">用户名 <input value="alice" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <label class="block text-[12px] text-zinc-500">密码 / Token <input type="password" value="********" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100 outline-none focus:border-emerald-500/40"></label>
+            <div class="flex gap-2 pt-2">
+              <button class="h-9 px-4 rounded-md border border-white/10 text-[12.5px]">测试连接</button>
+              <button class="h-9 px-4 rounded-md bg-emerald-500 text-[#08120f] text-[12.5px] font-semibold">保存并登录</button>
+            </div>
+            <p class="text-[12px] text-emerald-400">上次测试：login 成功 · remote list 3 条</p>
+          </div>
+        </div>
+
+        <div id="settings-project" class="hidden">
+          <h2 class="text-[22px] font-semibold tracking-tight text-white">项目设置</h2>
+          <p class="mt-1 mb-5 text-[12.5px] text-zinc-500">写入 .conan-cli/project.yaml。扫描值可采纳，也可手填。</p>
+          <div class="grid md:grid-cols-2 gap-3 max-w-3xl">
+            <label class="block text-[12px] text-zinc-500">项目名 <input value="conan-demo" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100"></label>
+            <label class="block text-[12px] text-zinc-500">Qt 版本 <input value="6.8" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100"></label>
+            <label class="block text-[12px] text-zinc-500">编译器 <input value="gcc 11" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100"></label>
+            <label class="block text-[12px] text-zinc-500">channel <input value="dev" class="mt-1 w-full h-9 px-3 rounded-md bg-white/[0.03] border border-white/10 text-[13px] text-zinc-100"></label>
+            <label class="block text-[12px] text-zinc-500">使用平台：系统
+              <select class="mt-1 w-full h-9 px-3 rounded-md bg-[#0B0C0E] border border-white/10 text-[13px] text-zinc-100">
+                <option>Windows</option><option>Linux</option><option selected>麒麟</option>
+              </select>
+            </label>
+            <label class="block text-[12px] text-zinc-500">使用平台：架构
+              <select class="mt-1 w-full h-9 px-3 rounded-md bg-[#0B0C0E] border border-white/10 text-[13px] text-zinc-100">
+                <option>x86</option><option selected>x64</option><option>ARM</option>
+              </select>
+            </label>
+            <label class="block text-[12px] text-zinc-500">发布平台：系统
+              <select class="mt-1 w-full h-9 px-3 rounded-md bg-[#0B0C0E] border border-white/10 text-[13px] text-zinc-100">
+                <option>Windows</option><option>Linux</option><option selected>麒麟</option>
+              </select>
+            </label>
+            <label class="block text-[12px] text-zinc-500">发布平台：架构
+              <select class="mt-1 w-full h-9 px-3 rounded-md bg-[#0B0C0E] border border-white/10 text-[13px] text-zinc-100">
+                <option>x86</option><option selected>x64</option><option>ARM</option>
+              </select>
+            </label>
+          </div>
+          <p class="mt-4 text-[12px] text-zinc-500">缺二进制策略：只下载（只读）。输出目录：conan/</p>
+          <button class="mt-4 h-9 px-4 rounded-md bg-emerald-500 text-[#08120f] text-[12.5px] font-semibold">保存项目设置</button>
+        </div>
+      </section>
+
+      <!-- 诊断 -->
+      <section id="doctor" class="view p-6">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-[22px] font-semibold tracking-tight text-white">诊断</h2>
+            <p class="mt-1 text-[12.5px] text-zinc-500">失败要给出下一步，不只给退出码。</p>
+          </div>
+          <button class="h-8 px-3 rounded-md border border-white/10 text-[12px]">重新诊断</button>
+        </div>
+        <div class="rounded-lg border border-white/[0.07] divide-y divide-white/[0.05]">
+          <div class="px-4 py-3 grid grid-cols-[28px_1fr_auto] gap-3 items-center text-[13px]"><span class="text-emerald-400">✓</span><span>Conan 可执行文件</span><span class="text-zinc-500 text-[12px]">Conan 2.12.2</span></div>
+          <div class="px-4 py-3 grid grid-cols-[28px_1fr_auto] gap-3 items-center text-[13px]"><span class="text-emerald-400">✓</span><span>项目配置</span><span class="text-zinc-500 text-[12px]">.conan-cli/project.yaml</span></div>
+          <div class="px-4 py-3 grid grid-cols-[28px_1fr_auto] gap-3 items-center text-[13px]"><span class="text-emerald-400">✓</span><span>配方文件</span><span class="text-zinc-500 text-[12px]">conanfile.py</span></div>
+          <div class="px-4 py-3 grid grid-cols-[28px_1fr_auto] gap-3 items-center text-[13px]"><span class="text-emerald-400">✓</span><span>依赖同步</span><span class="text-zinc-500 text-[12px]">yaml 与配方一致</span></div>
+          <div class="px-4 py-3 grid grid-cols-[28px_1fr_auto] gap-3 items-center text-[13px]"><span class="text-emerald-400">✓</span><span>全局仓库登录</span><span class="text-zinc-500 text-[12px]">nexus / alice</span></div>
+          <div class="px-4 py-3 grid grid-cols-[28px_1fr_auto] gap-3 items-center text-[13px] bg-amber-500/[0.04]"><span class="text-amber-300">!</span><span>选定平台制品</span><span class="text-zinc-400 text-[12px]">qtutils/1.0 无麒麟 x64 二进制</span></div>
+        </div>
+        <details class="mt-4 rounded-lg border border-white/[0.07] p-4 text-[12px] text-zinc-500">
+          <summary class="cursor-pointer text-zinc-300">高级 / 原始 Conan 输出</summary>
+          <pre class="mt-3 mono text-[11.5px] text-zinc-400 whitespace-pre-wrap">ERROR: Missing precompiled binary for 'qtutils/1.0' with os=Linux, arch=x86_64, distro=kylin, compiler=gcc, compiler.version=11</pre>
+        </details>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-20">
+  <div class="w-full max-w-md rounded-xl border border-white/10 bg-[#121416] p-5">
+    <p class="text-[15px] font-semibold tracking-tight text-white">确认发布</p>
+    <p class="mt-2 text-[12.5px] text-zinc-400">qtutils/1.0 将以 channel=dev、麒麟/x64 创建并上传到 nexus。不会再次询问密码。</p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button id="modal-cancel" class="h-8 px-3 rounded-md border border-white/10 text-[12px]">取消</button>
+      <button id="modal-ok" class="h-8 px-3 rounded-md bg-emerald-500 text-[#08120f] text-[12px] font-semibold">发布</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons({attrs:{"stroke-width":1.5}});
+  const views = ["overview","deps","download","publish","settings","doctor"];
+  function show(id) {
+    views.forEach((v) => document.getElementById(v).classList.toggle("active", v === id));
+    document.querySelectorAll(".nav-btn").forEach((b) => {
+      const on = b.dataset.view === id;
+      b.className = "nav-btn h-8 px-3 rounded-md text-[12.5px] font-medium transition-colors " + (on ? "text-white bg-white/[0.07] border border-white/[0.07]" : "text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04]");
+    });
+  }
+  document.querySelectorAll("[data-view]").forEach((el) => el.addEventListener("click", () => show(el.dataset.view)));
+  document.getElementById("set-global").addEventListener("click", () => {
+    document.getElementById("settings-global").classList.remove("hidden");
+    document.getElementById("settings-project").classList.add("hidden");
+    document.getElementById("set-global").className = "h-8 px-3 rounded-md text-[12.5px] font-medium text-white bg-white/[0.07] border border-white/[0.07]";
+    document.getElementById("set-project").className = "h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200";
+  });
+  document.getElementById("set-project").addEventListener("click", () => {
+    document.getElementById("settings-global").classList.add("hidden");
+    document.getElementById("settings-project").classList.remove("hidden");
+    document.getElementById("set-project").className = "h-8 px-3 rounded-md text-[12.5px] font-medium text-white bg-white/[0.07] border border-white/[0.07]";
+    document.getElementById("set-global").className = "h-8 px-3 rounded-md text-[12.5px] font-medium text-zinc-500 hover:text-zinc-200";
+  });
+  let os = "kylin", arch = "x64";
+  const osLabel = {windows:"Windows", linux:"Linux", kylin:"kylin"};
+  function refreshCombo() {
+    document.getElementById("combo-preview").textContent = `os=${os}  arch=${arch}  compiler=gcc 11  qt=6.8  remote=nexus  output=conan/`;
+  }
+  document.querySelectorAll(".os-pill").forEach((b) => b.addEventListener("click", () => {
+    os = b.dataset.os;
+    document.querySelectorAll(".os-pill").forEach((x) => x.classList.toggle("chip-on", x === b));
+    refreshCombo();
+  }));
+  document.querySelectorAll(".arch-pill").forEach((b) => b.addEventListener("click", () => {
+    arch = b.dataset.arch;
+    document.querySelectorAll(".arch-pill").forEach((x) => x.classList.toggle("chip-on", x === b));
+    refreshCombo();
+  }));
+  const modal = document.getElementById("modal");
+  document.getElementById("confirm-publish").addEventListener("click", () => modal.classList.remove("hidden"));
+  document.getElementById("modal-cancel").addEventListener("click", () => modal.classList.add("hidden"));
+  document.getElementById("modal-ok").addEventListener("click", () => modal.classList.add("hidden"));
+</script>
+</body>
+</html>

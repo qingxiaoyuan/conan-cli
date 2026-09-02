@@ -1,0 +1,3 @@
+{
+  "conanCli.binary": "${workspaceFolder}/bin/conan-cli"
+}

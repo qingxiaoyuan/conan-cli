@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conan CLI — TUI 设计稿</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@0.462.0"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Inter, "Noto Sans SC", sans-serif; }
+  .term { font-family: "JetBrains Mono", ui-monospace, Menlo, "Noto Sans SC", monospace; }
+</style>
+</head>
+<body class="bg-[#060708] min-h-screen antialiased text-zinc-300">
+
+<div class="max-w-6xl mx-auto px-8 pt-12 pb-8">
+  <div class="flex items-center gap-3">
+    <span class="text-[13px] font-semibold tracking-tight text-white">Conan CLI</span>
+    <span class="text-[11px] px-2 py-0.5 rounded-full border border-white/10 text-zinc-500">设计稿 · TUI</span>
+  </div>
+  <h1 class="mt-3 text-[28px] font-semibold tracking-tight text-white">终端控制台</h1>
+  <p class="mt-1 text-[13px] text-zinc-500">与 VS Code 同一套字段：概览、设置（全局/项目都能改）、依赖分析、发布表单。零 TUI 框架，ANSI + 标准库。</p>
+</div>
+
+<div class="max-w-6xl mx-auto px-8 pb-16 grid lg:grid-cols-2 gap-10">
+
+  <!-- 概览 -->
+  <div>
+    <p class="text-[11px] text-zinc-600 mb-3">屏 1 / 概览</p>
+    <div class="rounded-xl border border-white/10 bg-[#0B0C0E] overflow-hidden">
+      <div class="h-9 px-3.5 flex items-center border-b border-white/[0.06]">
+        <p class="flex-1 text-center text-[11px] text-zinc-600 term">conan-cli tui</p>
+      </div>
+      <div class="p-4 term text-[12px] leading-[1.75]">
+        <div class="border border-emerald-400/25">
+          <div class="flex justify-between border-b border-emerald-400/20 px-3 py-2">
+            <span class="text-emerald-300 tracking-widest text-[11px]">CONAN CLI · 项目工作台</span>
+            <span class="text-amber-300">需要处理</span>
+          </div>
+          <div class="px-3 py-2 text-[11px] text-zinc-400 border-b border-emerald-400/20">
+            项目 conan-demo　构建 qmake　频道 dev<br>
+            平台 麒麟/x64　Qt 6.8（扫描）　编译器 gcc 11　仓库 nexus
+          </div>
+          <div class="px-3 py-2 text-[11.5px]">
+            <p class="text-zinc-500">快捷操作</p>
+            <p class="text-zinc-300">1 初始化/刷新　2 扫描　3 依赖分析　4 下载</p>
+            <p class="text-zinc-300">5 发布表单　　6 设置（全局/项目）　7 诊断　q 退出</p>
+          </div>
+          <div class="border-t border-emerald-400/20 px-3 py-2 text-[11px] text-zinc-400">
+            ! qtutils/1.0 在麒麟/x64 无二进制。按 3 查看分析，不要本机编译。
+          </div>
+        </div>
+        <p class="mt-3 text-zinc-500">选择操作 [1-7 / q] &gt; <span class="inline-block w-1.5 h-3 bg-emerald-300 align-middle animate-pulse"></span></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置 -->
+  <div>
+    <p class="text-[11px] text-zinc-600 mb-3">屏 2 / 设置（终端也能改）</p>
+    <div class="rounded-xl border border-white/10 bg-[#0B0C0E] overflow-hidden">
+      <div class="h-9 px-3.5 flex items-center border-b border-white/[0.06]">
+        <p class="flex-1 text-center text-[11px] text-zinc-600 term">conan-cli tui · 设置</p>
+      </div>
+      <div class="p-4 term text-[12px] leading-[1.75]">
+        <div class="border border-emerald-400/25">
+          <div class="flex justify-between border-b border-emerald-400/20 px-3 py-2">
+            <span class="text-emerald-300 tracking-widest text-[11px]">设置</span>
+            <span class="text-zinc-500">Tab 全局 / 项目</span>
+          </div>
+          <div class="grid grid-cols-2 text-[11px]">
+            <div class="border-r border-emerald-400/20 py-2">
+              <p class="px-3 text-zinc-500">全局</p>
+              <p class="bg-emerald-400 px-3 text-black font-semibold">▸ 仓库名　nexus</p>
+              <p class="px-3 text-zinc-400">URL　https://nexus…/conan-hosted/</p>
+              <p class="px-3 text-zinc-400">用户　alice</p>
+              <p class="px-3 text-zinc-400">密码　********（stdin 交给 Conan）</p>
+              <p class="px-3 pt-2 text-zinc-500">t 测试连接　s 保存登录</p>
+            </div>
+            <div class="py-2">
+              <p class="px-3 text-zinc-500">项目</p>
+              <p class="px-3 text-zinc-300">Qt　　　6.8　[扫描可采纳]</p>
+              <p class="px-3 text-zinc-300">编译器　gcc 11</p>
+              <p class="px-3 text-zinc-300">使用　　麒麟 / x64</p>
+              <p class="px-3 text-zinc-300">发布　　麒麟 / x64</p>
+              <p class="px-3 text-zinc-300">channel　dev</p>
+            </div>
+          </div>
+          <div class="border-t border-emerald-400/20 px-3 py-2 text-[11px] text-emerald-300">✓ 测试连接成功。密码未写入项目仓库。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 分析 -->
+  <div>
+    <p class="text-[11px] text-zinc-600 mb-3">屏 3 / 依赖分析</p>
+    <div class="rounded-xl border border-white/10 bg-[#0B0C0E] overflow-hidden">
+      <div class="h-9 px-3.5 flex items-center border-b border-white/[0.06]">
+        <p class="flex-1 text-center text-[11px] text-zinc-600 term">conan-cli analyze --os kylin --arch x64</p>
+      </div>
+      <div class="p-4 term text-[12px] leading-[1.75]">
+        <div class="border border-emerald-400/25 text-[11px]">
+          <div class="px-3 py-2 border-b border-emerald-400/20 text-emerald-300">分析 · 麒麟 / x64 · gcc 11 · Qt 6.8</div>
+          <div class="px-3 py-2">
+            <p><span class="text-emerald-400">✓</span> fmt/10.2.1　　　　yaml=配方　制品已找到</p>
+            <p><span class="text-emerald-400">✓</span> nlohmann_json/3.11.3　yaml=配方　header-only</p>
+            <p><span class="text-amber-300">×</span> qtutils/1.0　　　　yaml=配方　无匹配二进制</p>
+            <p class="mt-2 text-zinc-500">原因：仓库有 linux/x64，无麒麟/x64。下一步：改平台，或请作者按该组合发布。</p>
+          </div>
+          <div class="border-t border-emerald-400/20 px-3 py-2 text-zinc-500">d 下载已找到的　o/a 改系统/架构　Enter 返回</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 发布 -->
+  <div>
+    <p class="text-[11px] text-zinc-600 mb-3">屏 4 / 发布表单</p>
+    <div class="rounded-xl border border-white/10 bg-[#0B0C0E] overflow-hidden">
+      <div class="h-9 px-3.5 flex items-center border-b border-white/[0.06]">
+        <p class="flex-1 text-center text-[11px] text-zinc-600 term">conan-cli tui · 发布</p>
+      </div>
+      <div class="p-4 term text-[12px] leading-[1.75]">
+        <div class="border border-emerald-400/25 text-[11px]">
+          <div class="px-3 py-2 border-b border-emerald-400/20 text-emerald-300">发布表单 · 登录已在设置页完成</div>
+          <div class="px-3 py-2 space-y-0.5">
+            <p>包名　　<span class="text-zinc-200">qtutils</span>　<span class="text-zinc-600">inspect 预填</span></p>
+            <p>版本　　<span class="text-zinc-200">1.0</span></p>
+            <p>channel　<span class="text-emerald-300">▸ dev</span>　staging　stable</p>
+            <p>系统　　Windows　Linux　<span class="text-emerald-300">▸ 麒麟</span></p>
+            <p>架构　　x86　<span class="text-emerald-300">▸ x64</span>　ARM</p>
+            <p>远程　　nexus（全局）　用户 alice　<span class="text-emerald-400">已登录</span></p>
+          </div>
+          <div class="mx-3 mb-2 border border-white/10 bg-black/40 px-2 py-1 text-zinc-300">$ conan-cli publish --remote nexus --channel dev --os kylin --arch x64 --ref qtutils/1.0</div>
+          <div class="border-t border-emerald-400/20 px-3 py-2 text-zinc-500">Enter 确认发布　未登录则跳到设置　q 返回</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>lucide.createIcons({attrs:{"stroke-width":1.5}});</script>
+</body>
+</html>

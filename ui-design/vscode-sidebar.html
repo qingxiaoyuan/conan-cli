@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conan CLI — 侧边栏设计稿</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@0.462.0"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Inter, "PingFang SC", "Noto Sans SC", sans-serif; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body class="bg-[#060708] min-h-screen antialiased text-zinc-300">
+
+<div class="max-w-5xl mx-auto px-8 pt-12 pb-8">
+  <div class="flex items-center gap-3">
+    <span class="text-[13px] font-semibold tracking-tight text-white">Conan CLI</span>
+    <span class="text-[11px] px-2 py-0.5 rounded-full border border-white/10 text-zinc-500">设计稿 · 侧栏</span>
+  </div>
+  <h1 class="mt-3 text-[28px] font-semibold tracking-tight text-white">VS Code 侧边栏</h1>
+  <p class="mt-1 text-[13px] text-zinc-500">约 300px。不是包市场，而是项目状态、平台和会触发 CLI 的快捷操作。完整填表在控制台 Tab。</p>
+</div>
+
+<div class="max-w-5xl mx-auto px-8 pb-16 flex flex-wrap gap-10 items-start">
+
+  <div>
+    <p class="text-[11px] text-zinc-600 mb-3">状态 1 / 项目就绪</p>
+    <div class="w-[300px] h-[680px] rounded-xl border border-white/10 bg-[#0B0C0E] flex flex-col overflow-hidden shadow-2xl shadow-black/60">
+      <div class="px-3 pt-3 pb-2 border-b border-white/5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="package" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span class="text-[12px] font-semibold tracking-tight text-white">Conan</span>
+          </div>
+          <button class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300" title="打开控制台">
+            <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <p class="mt-2 text-[13px] font-medium text-white truncate">conan-demo</p>
+        <p class="mono text-[10.5px] text-zinc-500">qmake · 只下载二进制</p>
+      </div>
+
+      <div class="px-3 py-3 border-b border-white/5 space-y-2 text-[11.5px]">
+        <div class="flex justify-between"><span class="text-zinc-500">平台</span><span class="text-zinc-200">麒麟 / x64</span></div>
+        <div class="flex justify-between"><span class="text-zinc-500">Qt</span><span class="text-zinc-200">6.8 <span class="text-emerald-400/80">已扫描</span></span></div>
+        <div class="flex justify-between"><span class="text-zinc-500">编译器</span><span class="text-zinc-200">gcc 11</span></div>
+        <div class="flex justify-between"><span class="text-zinc-500">仓库</span><span class="text-emerald-400">nexus 已登录</span></div>
+      </div>
+
+      <div class="px-3 py-2.5 space-y-1.5">
+        <button class="w-full h-8 rounded-md bg-emerald-500 text-[#08120f] text-[12px] font-semibold">按平台下载</button>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button class="h-8 rounded-md border border-white/10 text-[11.5px] text-zinc-300">扫描</button>
+          <button class="h-8 rounded-md border border-white/10 text-[11.5px] text-zinc-300">分析</button>
+          <button class="h-8 rounded-md border border-white/10 text-[11.5px] text-zinc-300">发布</button>
+          <button class="h-8 rounded-md border border-white/10 text-[11.5px] text-zinc-300">设置</button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-3 py-2 border-t border-white/5">
+        <p class="text-[10px] text-zinc-600 mb-2">直接依赖 · 麒麟/x64</p>
+        <div class="space-y-2 text-[12px]">
+          <div class="flex justify-between"><span class="mono text-zinc-200">fmt/10.2.1</span><span class="text-emerald-400">有制品</span></div>
+          <div class="flex justify-between"><span class="mono text-zinc-200">nlohmann_json</span><span class="text-emerald-400">有制品</span></div>
+          <div class="flex justify-between"><span class="mono text-zinc-200">qtutils/1.0</span><span class="text-amber-300">缺失</span></div>
+        </div>
+        <p class="mt-3 text-[11px] text-zinc-500">qtutils 无麒麟 x64 二进制。打开控制台看原因，不要本机编译。</p>
+      </div>
+
+      <div class="px-3 py-2 border-t border-white/5 flex items-center justify-between text-[10px] text-zinc-500">
+        <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>1 项需处理</span>
+        <span class="mono">alice</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p class="text-[11px] text-zinc-600 mb-3">状态 2 / 未初始化</p>
+    <div class="w-[300px] h-[680px] rounded-xl border border-white/10 bg-[#0B0C0E] flex flex-col overflow-hidden shadow-2xl shadow-black/60">
+      <div class="px-3 pt-3 pb-2 border-b border-white/5">
+        <div class="flex items-center gap-1.5">
+          <i data-lucide="package" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span class="text-[12px] font-semibold tracking-tight text-white">Conan</span>
+        </div>
+        <p class="mt-2 text-[13px] font-medium text-white">qt-console</p>
+        <p class="text-[11px] text-zinc-500">尚未生成项目配置</p>
+      </div>
+      <div class="p-4 flex-1">
+        <p class="text-[12.5px] leading-5 text-zinc-400">初始化会写入 project.yaml。若没有 conanfile，会同时生成最简 conanfile.txt，然后可扫描 Qt/编译器并设置平台。</p>
+        <button class="mt-4 w-full h-9 rounded-md bg-emerald-500 text-[#08120f] text-[12.5px] font-semibold">初始化项目</button>
+        <button class="mt-2 w-full h-8 rounded-md border border-white/10 text-[12px] text-zinc-300">打开全局设置（Nexus）</button>
+      </div>
+      <div class="px-3 py-2 border-t border-white/5 text-[10px] text-zinc-600">全局仓库未登录</div>
+    </div>
+  </div>
+</div>
+
+<script>lucide.createIcons({attrs:{"stroke-width":1.5}});</script>
+</body>
+</html>

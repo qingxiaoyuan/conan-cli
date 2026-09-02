@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conan CLI — UI 设计稿</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@0.462.0"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="bg-[#060708] min-h-screen antialiased text-zinc-300" style="font-family:Inter,'PingFang SC','Noto Sans SC',sans-serif">
+
+<div class="max-w-3xl mx-auto px-8 py-16">
+  <div class="flex items-center gap-2">
+    <i data-lucide="package" class="w-4 h-4 text-emerald-400"></i>
+    <span class="text-[13px] font-semibold tracking-tight text-white">Conan CLI</span>
+    <span class="text-[11px] px-2 py-0.5 rounded-full border border-white/10 text-zinc-500">UI 设计稿</span>
+  </div>
+
+  <h1 class="mt-6 text-[30px] font-semibold tracking-tight text-white">工作台三件套</h1>
+  <p class="mt-3 text-[13.5px] leading-relaxed text-zinc-500 max-w-[560px]">按需求改过：不再做包市场。用户面对的是初始化、扫描 Qt/编译器、按操作系统和架构找制品、设置页（全局 Nexus 登录 + 项目工具链）、发布填表。VS Code 与终端字段对齐，动作都落到命令。</p>
+
+  <div class="mt-8 rounded-lg border border-white/[0.07] p-4 text-[12.5px] text-zinc-400 space-y-1">
+    <p>平台 = Windows / Linux / 麒麟 × x86 / x64 / ARM</p>
+    <p>编译器、Qt 是项目设置，查找时与平台组合</p>
+    <p>登录只在设置里录；缺二进制只提示，不在本机编译</p>
+  </div>
+
+  <div class="mt-8 divide-y divide-white/[0.06] border-y border-white/[0.06]">
+    <a href="vscode-sidebar.html" class="group flex items-center gap-5 py-5 hover:bg-white/[0.02] transition-colors">
+      <div class="w-11 h-11 shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] flex items-center justify-center text-emerald-400 group-hover:border-emerald-500/40">
+        <i data-lucide="panel-left" class="w-[19px] h-[19px]"></i>
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-[15px] font-medium tracking-tight text-white">VS Code 侧边栏</p>
+        <p class="mt-1 text-[12px] text-zinc-500">项目状态、平台、扫描结果、快捷下载/发布/设置。完整表单进控制台。</p>
+      </div>
+      <i data-lucide="arrow-up-right" class="w-4 h-4 text-zinc-600 group-hover:text-emerald-400"></i>
+    </a>
+    <a href="vscode-dashboard.html" class="group flex items-center gap-5 py-5 hover:bg-white/[0.02] transition-colors">
+      <div class="w-11 h-11 shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] flex items-center justify-center text-emerald-400 group-hover:border-emerald-500/40">
+        <i data-lucide="layout-dashboard" class="w-[19px] h-[19px]"></i>
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-[15px] font-medium tracking-tight text-white">VS Code 控制台</p>
+        <p class="mt-1 text-[12px] text-zinc-500">可点击：概览、依赖分析、下载、发布表单、全局/项目设置、诊断。</p>
+      </div>
+      <i data-lucide="arrow-up-right" class="w-4 h-4 text-zinc-600 group-hover:text-emerald-400"></i>
+    </a>
+    <a href="tui.html" class="group flex items-center gap-5 py-5 hover:bg-white/[0.02] transition-colors">
+      <div class="w-11 h-11 shrink-0 rounded-lg border border-white/[0.08] bg-white/[0.03] flex items-center justify-center text-emerald-400 group-hover:border-emerald-500/40">
+        <i data-lucide="terminal" class="w-[19px] h-[19px]"></i>
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-[15px] font-medium tracking-tight text-white">终端 TUI</p>
+        <p class="mt-1 text-[12px] text-zinc-500">概览、设置（终端也能改）、依赖分析、发布表单。键位驱动。</p>
+      </div>
+      <i data-lucide="arrow-up-right" class="w-4 h-4 text-zinc-600 group-hover:text-emerald-400"></i>
+    </a>
+  </div>
+  <p class="mt-8 text-[11px] text-zinc-600">对照 docs/requirements.md · 视觉沿用原暗色 + 翠绿强调</p>
+</div>
+<script>lucide.createIcons({attrs:{"stroke-width":1.5}});</script>
+</body>
+</html>
