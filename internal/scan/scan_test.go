@@ -82,3 +82,37 @@ func TestChooserToolDir(t *testing.T) {
 		t.Fatalf("dir = %q", got)
 	}
 }
+
+func TestVersionGreater(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want bool
+	}{
+		{a: "6.8", b: "5.15.13", want: true},
+		{a: "5.15.13", b: "5.15.2", want: true},
+		{a: "5.15", b: "5.15.0", want: false},
+		{a: "5.15", b: "5.15", want: false},
+		{a: "6", b: "6.0.1", want: false},
+		{a: "6.0.1", b: "6", want: true},
+	}
+	for _, test := range tests {
+		if got := versionGreater(test.a, test.b); got != test.want {
+			t.Errorf("versionGreater(%q, %q) = %v, want %v", test.a, test.b, got, test.want)
+		}
+	}
+}
+
+func TestSkipQtPathFiltersNonRuntimeDirs(t *testing.T) {
+	for _, path := range []string{
+		"/opt/Qt/Tools/QtCreator/bin/qmake",
+		"/opt/Qt/6.8.0/Docs/bin/qmake",
+		"/opt/Qt/Examples/6.8.0/bin/qmake",
+	} {
+		if !skipQtPath(path) {
+			t.Errorf("skipQtPath(%q) = false, want true", path)
+		}
+	}
+	if skipQtPath("/opt/Qt/6.8.0/gcc_64/bin/qmake") {
+		t.Error("skipQtPath() skipped a runtime install")
+	}
+}

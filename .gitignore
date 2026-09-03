@@ -1,7 +1,33 @@
-bin/
-dist/
-.conan-cli/cache/
-conan/
-build/
+# 构建产物（只用根目录 /bin，避免误伤源码路径）
+/bin/
+/build/
+/conan-cli
+/conan-cli.exe
+*.test
+*.out
+coverage.out
+coverage.html
+
+# 发布包与下载缓存
+/dist/
+/.cache/
+*.vsix
+*.partial
+
+# 插件打包生成：各平台 CLI、便携 Python、Conan 2
+/vscode/bin/
+/vscode/runtime/
+
+# 本机 conan install 输出（必须锚定仓库根，不能写成 conan/，否则会忽略 internal/conan）
+/conan/
+/.conan-cli/
+
+# 日志与解释器缓存
 *.log
-vscode/*.vsix
+__pycache__/
+*.pyc
+*.pyo
+
+# 系统杂项
+.DS_Store
+Thumbs.db

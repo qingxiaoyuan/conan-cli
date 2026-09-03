@@ -39,17 +39,6 @@ func TestDependencyCheck(t *testing.T) {
 	}
 }
 
-func TestReferenceCoordinates(t *testing.T) {
-	user, channel := referenceCoordinates("demo/1.0@alice/staging", "dev")
-	if user != "alice" || channel != "staging" {
-		t.Fatalf("coordinates = %q/%q", user, channel)
-	}
-	user, channel = referenceCoordinates("demo/1.0", "dev")
-	if user != "" || channel != "dev" {
-		t.Fatalf("fallback coordinates = %q/%q", user, channel)
-	}
-}
-
 func TestPublishDryRunDoesNotRewriteRecipe(t *testing.T) {
 	dir := t.TempDir()
 	project := config.NewProject(dir)
@@ -65,15 +54,18 @@ func TestPublishDryRunDoesNotRewriteRecipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := New(dir).PublishPackage(context.Background(), PublishRequest{
-		Name: "demo", Version: "2.0", OS: "linux", Arch: "x64",
+		Name: "demo", Version: "2.0", Channel: "dev", OS: "linux", Arch: "x64",
 		Compiler: "gcc", CompilerVersion: "13", QtVersion: "6.8", DryRun: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	data, _ := report.Data.(map[string]any)
-	if data["recipe_action"] != "patch" || data["version"] != "2.0" {
+	if data["recipe_action"] != "patch" || data["version"] != "2.0" || data["reference"] != "demo/2.0" {
 		t.Fatalf("preview data = %#v", data)
+	}
+	if data["channel"] != "dev" {
+		t.Fatalf("channel = %#v, want dev", data["channel"])
 	}
 	got, _ := os.ReadFile(path)
 	if string(got) != original {
@@ -93,6 +85,12 @@ func TestPublishWritesRecipeThenPackages(t *testing.T) {
 	}
 	path := filepath.Join(dir, "conanfile.py")
 	if err := os.WriteFile(path, []byte("from conan import ConanFile\nclass DemoConan(ConanFile):\n    name = \"demo\"\n    version = \"1.0\"\n    def build(self):\n        self.run(\"custom-build\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lib", "libdemo.a"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	fake := filepath.Join(dir, "fake-conan")
@@ -115,6 +113,79 @@ func TestPublishWritesRecipeThenPackages(t *testing.T) {
 	text := string(got)
 	if !strings.Contains(text, `version = "2.0"`) || !strings.Contains(text, `self.run("custom-build")`) {
 		t.Fatalf("expected version bump without rewriting build(), got %s", text)
+	}
+}
+
+func TestApplyPackageIdentityUsesQmakeTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goodluckbutton.pro"), []byte("TEMPLATE = lib\nTARGET = goodluckbutton\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	project := config.NewProject(dir)
+	if filepath.Base(dir) == "goodluckbutton" {
+		t.Skip("temp dir already named like the library")
+	}
+	if project.Name == "goodluckbutton" {
+		t.Fatal("NewProject should not yet lock onto TARGET")
+	}
+	fillProjectDefaults(dir, project)
+	if project.Name != "goodluckbutton" {
+		t.Fatalf("name = %q, want goodluckbutton", project.Name)
+	}
+	if project.NameLocked {
+		t.Fatal("auto detect should not lock")
+	}
+}
+
+func TestLockedPackageNameIsKept(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goodluckbutton.pro"), []byte("TEMPLATE = lib\nTARGET = goodluckbutton\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	project := config.NewProject(dir)
+	project.Name = "qt-test-1"
+	project.NameLocked = true
+	fillProjectDefaults(dir, project)
+	if project.Name != "qt-test-1" {
+		t.Fatalf("locked name overwritten: %q", project.Name)
+	}
+}
+
+func TestPublishUsesDetectedNameWhenOmitted(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "goodluckbutton.pro"), []byte("TEMPLATE = lib\nTARGET = goodluckbutton\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	project := config.NewProject(dir)
+	project.Compiler = config.Compiler{ID: "gcc", Version: "13"}
+	project.QtVersion = "6.8"
+	project.Platform.Publish = config.PlatformSpec{OS: "linux", Arch: "x64"}
+	project.Remote = "nexus"
+	if err := config.SaveProject(dir, project); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lib", "libgoodluckbutton.a"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(dir, "fake-conan")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	app := New(dir)
+	app.Client.Binary = fake
+	report, err := app.PublishPackage(context.Background(), PublishRequest{
+		Version: "1.0.1", OS: "linux", Arch: "x64",
+		Compiler: "gcc", CompilerVersion: "13", QtVersion: "6.8", Remote: "nexus", DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	data, _ := report.Data.(map[string]any)
+	if data["name"] != "goodluckbutton" || data["reference"] != "goodluckbutton/1.0.1" {
+		t.Fatalf("data = %#v", data)
 	}
 }
 
@@ -155,12 +226,31 @@ func TestInitCreatesMissingProjectDirectory(t *testing.T) {
 
 func TestNewUsesConfiguredConanBinary(t *testing.T) {
 	t.Setenv("CONAN_CLI_HOME", t.TempDir())
+	t.Setenv("CONAN_BIN", "")
+	t.Setenv("CONAN_CLI_BUNDLED_PYTHON", "/opt/bundled/python3")
 	configured := filepath.Join(t.TempDir(), "conan")
 	if err := config.SaveGlobal(&config.Global{ConanBin: configured}); err != nil {
 		t.Fatal(err)
 	}
-	if got := New(t.TempDir()).Client.Binary; got != configured {
-		t.Fatalf("client binary = %q, want %q", got, configured)
+	client := New(t.TempDir()).Client
+	if client.Binary != configured {
+		t.Fatalf("client binary = %q, want %q", client.Binary, configured)
+	}
+	if len(client.BaseArgs) != 0 {
+		t.Fatalf("base args = %#v", client.BaseArgs)
+	}
+}
+
+func TestNewUsesBundledPythonWhenUnconfigured(t *testing.T) {
+	t.Setenv("CONAN_CLI_HOME", t.TempDir())
+	t.Setenv("CONAN_BIN", "")
+	t.Setenv("CONAN_CLI_BUNDLED_PYTHON", "/opt/bundled/python3")
+	client := New(t.TempDir()).Client
+	if client.Binary != "/opt/bundled/python3" {
+		t.Fatalf("client binary = %q", client.Binary)
+	}
+	if len(client.BaseArgs) != 3 || client.BaseArgs[2] != "conans.conan" {
+		t.Fatalf("base args = %#v", client.BaseArgs)
 	}
 }
 

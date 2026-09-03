@@ -108,6 +108,25 @@ func TestPatchQtDefaultAndOptions(t *testing.T) {
 	}
 }
 
+func TestApplyRefreshesGeneratedPublish(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Generate(dir, GenerateInput{Kind: RecipePublish, Name: "old", Version: "0.1", QtVersion: "6.5"}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := ApplyPublishIdentity(dir, PublishIdentity{Name: "qt-test-1", Version: "1.0.0", QtVersion: "5.14.2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Action != "generate" {
+		t.Fatalf("action = %q", result.Action)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "conanfile.py"))
+	text := string(data)
+	if !strings.Contains(text, `name = "qt-test-1"`) || !strings.Contains(text, `version = "1.0.0"`) || !strings.Contains(text, "def export_sources") {
+		t.Fatalf("refreshed recipe = %s", text)
+	}
+}
+
 func TestValidateIdentity(t *testing.T) {
 	if _, err := ApplyPublishIdentity(t.TempDir(), PublishIdentity{Name: "bad/name", Version: "1"}); err == nil {
 		t.Fatal("expected invalid name")

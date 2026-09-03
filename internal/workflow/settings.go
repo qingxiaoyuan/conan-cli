@@ -53,6 +53,9 @@ func (a *App) SaveProjectSettings(input ProjectSettingsInput) (Report, error) {
 		return Report{}, err
 	}
 	if input.Name != "" {
+		if strings.TrimSpace(project.Name) != "" && input.Name != project.Name {
+			project.NameLocked = true
+		}
 		project.Name = input.Name
 	}
 	if input.QtVersion != "" {
@@ -82,9 +85,7 @@ func (a *App) SaveProjectSettings(input ProjectSettingsInput) (Report, error) {
 	if input.PublishBuildType != "" {
 		project.Platform.Publish.BuildType = config.NormalizeBuildType(input.PublishBuildType)
 	}
-	if project.Platform.Publish.Empty() {
-		project.Platform.Publish = project.Platform.Consume
-	}
+	// consume → publish 回退由 config.applyDefaults 在 SaveProject 内统一处理。
 	if input.Channel != "" {
 		project.Channel = input.Channel
 	}
@@ -124,7 +125,7 @@ func (a *App) SaveGlobalSettings(ctx context.Context, input GlobalSettingsInput)
 		return Report{}, err
 	}
 	if strings.TrimSpace(global.ConanBin) != "" {
-		a.Client.Binary = global.ConanBin
+		a.Client.UseExecutable(global.ConanBin)
 	}
 	if input.Password != "" {
 		if err := config.SavePassword(input.Password); err != nil {
@@ -137,7 +138,9 @@ func (a *App) SaveGlobalSettings(ctx context.Context, input GlobalSettingsInput)
 		}
 		if project, projectErr := a.Project(); projectErr == nil && project.Remote == "" {
 			project.Remote = global.Nexus.Name
-			_ = config.SaveProject(a.Dir, project)
+			if saveErr := config.SaveProject(a.Dir, project); saveErr != nil {
+				return Report{OK: false, Action: "config", Message: "全局配置已保存，但写入项目 remote 失败", Error: saveErr.Error(), Data: global.View()}, saveErr
+			}
 		}
 	}
 	return Report{OK: true, Action: "config", Message: "全局设置已保存", Data: global.View()}, nil
@@ -220,13 +223,4 @@ func (a *App) ConfigTest(ctx context.Context) (Report, error) {
 func hasNamedFile(dir, name string) bool {
 	_, err := os.Stat(filepath.Join(dir, name))
 	return err == nil
-}
-
-func osStatConanfile(dir string) (string, error) {
-	for _, name := range []string{"conanfile.py", "conanfile.txt"} {
-		if hasNamedFile(dir, name) {
-			return name, nil
-		}
-	}
-	return "", errors.New("missing")
 }

@@ -178,7 +178,7 @@
 | F-PLT-02 | 操作系统至少支持 Windows、Linux、麒麟；架构至少支持 x86、x64、ARM。目标平台由用户选择，不使用开发机作为默认 | P0 |
 | F-PLT-03 | 工具把「操作系统 + 架构 + 项目里的编译器 + Qt」映射成 Conan settings/profile，再去仓库查找。麒麟在用户侧是独立系统；映射到 Conan 时按麒麟实际 ABI 处理（常见为 Linux 系 + 发行版/工具链差异），映射表可配置 | P0 |
 | F-PLT-04 | 「查找制品」：按当前项目依赖 + 选定操作系统/架构 + 项目编译器/Qt，在已配置 remote 上列出匹配情况 | P0 |
-| F-PLT-05 | 「下载制品」：对上述组合执行安装，固定只拉二进制，输出到项目配置的 `output_folder`（默认 `lib`） | P0 |
+| F-PLT-05 | 「下载制品」：对上述组合执行安装，固定只拉二进制，输出到项目配置的 `output_folder`（默认 `conan`） | P0 |
 | F-PLT-06 | 下载前可预览将使用的 Conan settings（os/arch/compiler/Qt），避免静默用错 ABI | P1 |
 | F-PLT-07 | 缺二进制时返回结构化失败：缺哪个引用、当前操作系统/架构/编译器/Qt、建议检查仓库还是改选项；保留 Conan 原始输出供展开 | P0 |
 | F-PLT-08 | 使用平台与发布平台可分别配置；默认同步，允许拆开 | P1 |
@@ -212,7 +212,7 @@
 | F-SET-P05 | 发布平台 | 操作系统 + 架构，创建/上传用，可与使用平台相同 | P0 |
 | F-SET-P06 | 发布 channel | 默认 `dev` | P0 |
 | F-SET-P07 | 构建系统 | qmake / cmake / unknown | P1 |
-| F-SET-P08 | 输出目录 | 默认 `lib` | P1 |
+| F-SET-P08 | 输出目录 | 默认 `conan` | P1 |
 | F-SET-P09 | 缺二进制策略 | 本阶段固定 `download-only`，界面只读说明 | P0 |
 
 设置页保存即生效到对应配置文件；需要登录仓库的操作在保存后可自动或手动执行一次 login。VS Code 与终端 TUI 都必须能查看和修改上述全局/项目字段。
@@ -289,7 +289,7 @@ platform:
 remote: nexus
 channel: dev
 missing_binary_policy: download-only
-output_folder: lib
+output_folder: conan
 dependencies:
   - fmt/10.2.1
   - qtutils/1.0

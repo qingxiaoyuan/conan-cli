@@ -710,7 +710,7 @@ func (ui *dashboard) renderCursorDependencies(report workflow.Report, selected i
 }
 
 func (controller *cursorController) addDependencyCursor() {
-	value, ok := controller.editText("添加依赖", "包引用", "")
+	value, ok := controller.editText("添加依赖", "包引用", "", false)
 	if !ok || strings.TrimSpace(value) == "" {
 		return
 	}
@@ -721,7 +721,7 @@ func (controller *cursorController) addDependencyCursor() {
 }
 
 func (controller *cursorController) searchCursor(ctx context.Context) {
-	value, ok := controller.editText("搜索远程仓库", "包名或版本", "")
+	value, ok := controller.editText("搜索远程仓库", "包名或版本", "", false)
 	if !ok || strings.TrimSpace(value) == "" {
 		return
 	}
@@ -781,21 +781,22 @@ func (ui *dashboard) renderCursorDoctor(report workflow.Report, selected int) {
 }
 
 type settingsCursorState struct {
-	active          string
-	selected        int
-	global          *config.Global
-	project         *config.Project
-	pendingPassword string
+	active   string
+	selected int
+	scope    settingsScope
 }
 
 func (controller *cursorController) settingsPage(ctx context.Context) {
 	controller.ui.refreshProject()
-	state := &settingsCursorState{active: "global", global: controller.ui.global, project: controller.ui.project}
-	if state.global == nil {
-		state.global = &config.Global{}
+	state := &settingsCursorState{
+		active: "global",
+		scope:  settingsScope{global: controller.ui.global, project: controller.ui.project},
 	}
-	if state.project == nil {
-		state.project = config.NewProject(controller.ui.app.Dir)
+	if state.scope.global == nil {
+		state.scope.global = &config.Global{}
+	}
+	if state.scope.project == nil {
+		state.scope.project = config.NewProject(controller.ui.app.Dir)
 	}
 	for {
 		controller.ui.renderCursorSettings(state)
@@ -834,46 +835,46 @@ func (controller *cursorController) settingsEnter(ctx context.Context, state *se
 	if state.active == "global" {
 		switch action {
 		case 0:
-			report, err := controller.ui.saveGlobal(ctx, state.global, state.pendingPassword)
+			report, err := controller.ui.saveGlobal(ctx, state.scope.global, state.scope.pendingPassword)
 			controller.ui.storeReport(report, err)
 			if err == nil {
-				state.pendingPassword = ""
+				state.scope.pendingPassword = ""
 			}
 			controller.ui.refreshProject()
 			controller.showResult("保存全局设置", report, err)
-			state.global = controller.ui.global
+			state.scope.global = controller.ui.global
 		case 1:
 			report, err := controller.ui.app.ConfigTest(ctx)
 			controller.ui.storeReport(report, err)
 			controller.showResult("测试连接", report, err)
 		case 2:
-			report, err := controller.ui.saveGlobal(ctx, state.global, state.pendingPassword)
+			report, err := controller.ui.saveGlobal(ctx, state.scope.global, state.scope.pendingPassword)
 			controller.ui.storeReport(report, err)
 			if err == nil {
 				loginReport, loginErr := controller.ui.app.ConfigLogin(ctx, "")
 				controller.ui.storeReport(loginReport, loginErr)
 				controller.showResult("保存并登录", loginReport, loginErr)
 				if loginErr == nil {
-					state.pendingPassword = ""
+					state.scope.pendingPassword = ""
 				}
 			} else {
 				controller.showResult("保存并登录", report, err)
 			}
 			controller.ui.refreshProject()
-			state.global = controller.ui.global
+			state.scope.global = controller.ui.global
 		case 3:
 			return
 		}
 		return
 	}
 	if action == 0 {
-		report, err := controller.ui.saveProject(state.project)
+		report, err := controller.ui.saveProject(state.scope.project)
 		controller.ui.storeReport(report, err)
 		controller.ui.refreshProject()
 		controller.showResult("保存项目设置", report, err)
-		state.project = controller.ui.project
-		if state.project == nil {
-			state.project = config.NewProject(controller.ui.app.Dir)
+		state.scope.project = controller.ui.project
+		if state.scope.project == nil {
+			state.scope.project = config.NewProject(controller.ui.app.Dir)
 		}
 	} else {
 		// The final project action is Back.
@@ -882,10 +883,7 @@ func (controller *cursorController) settingsEnter(ctx context.Context, state *se
 }
 
 func settingsFieldCount(active string) int {
-	if active == "global" {
-		return 5
-	}
-	return 14
+	return len(settingsFieldsFor(active))
 }
 
 func settingsActionCount(active string) int {
@@ -911,42 +909,21 @@ func (ui *dashboard) renderCursorSettings(state *settingsCursorState) {
 	ui.boxRow("  Tab / ← → 切换：" + cursorAction(ui, "全局", state.active == "global") + "   " + cursorAction(ui, "项目", state.active == "project"))
 	ui.boxSeparator("├", "┤")
 	if state.active == "global" {
-		view := state.global.View()
-		rows := []string{
-			"仓库名       " + fallback(state.global.Nexus.Name, "nexus"),
-			"URL          " + fallback(clip(state.global.Nexus.URL, 52), "未配置"),
-			"用户         " + fallback(state.global.Nexus.Username, "未配置"),
-			"密码 / Token  " + passwordLabel(view.HasPassword || state.pendingPassword != ""),
-			"Conan 路径    " + fallback(state.global.ConanBin, "PATH 中的 conan"),
-		}
-		for index, row := range rows {
-			ui.boxRow("  " + settingRow(ui, index, row, state.selected == index))
-		}
-		ui.boxSeparator("├", "┤")
-		ui.boxRow("  " + cursorAction(ui, "保存", state.selected == 5) + "   " + cursorAction(ui, "测试连接", state.selected == 6) + "   " + cursorAction(ui, "保存并登录", state.selected == 7) + "   " + cursorAction(ui, "返回", state.selected == 8))
+		ui.boxRow("  全局设置（保存在本机，不进入项目 git）")
 	} else {
-		rows := []string{
-			"项目名称      " + fallback(state.project.Name, "-"),
-			"Qt 版本       " + fallback(state.project.QtVersion, "未设置"),
-			"编译器        " + fallback(state.project.Compiler.ID, "未设置"),
-			"编译器版本    " + fallback(state.project.Compiler.Version, "未设置"),
-			"使用平台      " + fallback(state.project.Platform.Consume.Display(), "未选择"),
-			"使用架构      " + fallback(config.DisplayArch(state.project.Platform.Consume.Arch), "未选择"),
-			"使用构建      " + fallback(config.DisplayBuildType(state.project.Platform.Consume.BuildType), "Release"),
-			"发布平台      " + fallback(state.project.Platform.Publish.Display(), "未选择"),
-			"发布架构      " + fallback(config.DisplayArch(state.project.Platform.Publish.Arch), "未选择"),
-			"发布构建      " + fallback(config.DisplayBuildType(state.project.Platform.Publish.BuildType), "Release"),
-			"channel       " + fallback(state.project.Channel, "dev"),
-			"远程仓库      " + fallback(state.project.Remote, "跟随全局"),
-			"构建系统      " + fallback(state.project.BuildSystem, "unknown"),
-			"输出目录      " + fallback(state.project.OutputFolder, "conan"),
-		}
-		for index, row := range rows {
-			ui.boxRow("  " + settingRow(ui, index, row, state.selected == index))
-		}
+		ui.boxRow("  项目设置（写入 .conan-cli/project.yaml）")
+	}
+	fields := settingsFieldsFor(state.active)
+	for index, field := range fields {
+		ui.boxRow("  " + settingRow(ui, index, padCell(field.label, 13)+field.displayValue(&state.scope), state.selected == index))
+	}
+	ui.boxSeparator("├", "┤")
+	actionBase := len(fields)
+	if state.active == "global" {
+		ui.boxRow("  " + cursorAction(ui, "保存", state.selected == actionBase) + "   " + cursorAction(ui, "测试连接", state.selected == actionBase+1) + "   " + cursorAction(ui, "保存并登录", state.selected == actionBase+2) + "   " + cursorAction(ui, "返回", state.selected == actionBase+3))
+	} else {
 		ui.boxRow("  缺二进制策略  download-only（固定）")
-		ui.boxSeparator("├", "┤")
-		ui.boxRow("  " + cursorAction(ui, "保存项目设置", state.selected == 14) + "   " + cursorAction(ui, "返回", state.selected == 15))
+		ui.boxRow("  " + cursorAction(ui, "保存项目设置", state.selected == actionBase) + "   " + cursorAction(ui, "返回", state.selected == actionBase+1))
 	}
 	ui.boxSeparator("└", "┘")
 }
@@ -958,128 +935,52 @@ func settingRow(ui *dashboard, index int, value string, selected bool) string {
 	return fmt.Sprintf("  %d ", index+1) + value
 }
 
-func passwordLabel(saved bool) string {
-	if saved {
-		return "********（本机保存）"
-	}
-	return "未保存"
-}
-
+// editSettingField 编辑 state.selected 处的字段：OS / 架构 / 构建类型走
+// 选项页，密码走掩码编辑器，其余走普通文本编辑器。
 func (controller *cursorController) editSettingField(state *settingsCursorState) {
-	index := state.selected
+	fields := settingsFieldsFor(state.active)
+	if state.selected >= len(fields) {
+		return
+	}
+	field := fields[state.selected]
+	title := "编辑项目设置"
 	if state.active == "global" {
-		values := []string{state.global.Nexus.Name, state.global.Nexus.URL, state.global.Nexus.Username, "", state.global.ConanBin}
-		labels := []string{"仓库名", "Nexus Conan URL", "登录用户名", "密码 / Token（留空保留）", "Conan 可执行文件路径"}
-		value, ok := controller.editText("编辑全局设置", labels[index], values[index])
-		if !ok {
-			return
-		}
-		switch index {
-		case 0:
-			state.global.Nexus.Name = value
-		case 1:
-			state.global.Nexus.URL = value
-		case 2:
-			state.global.Nexus.Username = value
-		case 3:
-			if value != "" {
-				state.pendingPassword = value
-			}
-		case 4:
-			state.global.ConanBin = value
-		}
-		return
+		title = "编辑全局设置"
 	}
-	if index == 4 || index == 5 || index == 6 || index == 7 {
-		controller.editProjectPlatform(state, index)
-		return
-	}
-	values := []string{
-		state.project.Name, state.project.QtVersion, state.project.Compiler.ID, state.project.Compiler.Version,
-		"", "", "", "", "", "", state.project.Channel, state.project.Remote, state.project.BuildSystem, state.project.OutputFolder,
-	}
-	labels := []string{"项目名称", "Qt 版本", "编译器 gcc / clang / msvc", "编译器版本", "", "", "", "", "", "", "channel", "项目远程仓库名", "构建系统 cmake / qmake / unknown", "输出目录"}
-	value, ok := controller.editText("编辑项目设置", labels[index], values[index])
-	if !ok {
-		return
-	}
-	switch index {
-	case 0:
-		state.project.Name = value
-	case 1:
-		state.project.QtVersion = value
-	case 2:
-		state.project.Compiler.ID = value
-	case 3:
-		state.project.Compiler.Version = value
-	case 10:
-		state.project.Channel = value
-	case 11:
-		state.project.Remote = value
-	case 12:
-		state.project.BuildSystem = value
-	case 13:
-		state.project.OutputFolder = value
-	}
-}
-
-func (controller *cursorController) editProjectPlatform(state *settingsCursorState, index int) {
-	if index == 4 || index == 7 {
-		current := state.project.Platform.Consume.OS
-		if index == 7 {
-			current = state.project.Platform.Publish.OS
+	switch field.kind {
+	case fieldOS:
+		if value, ok := controller.choicePage("选择操作系统", osChoiceOptions(), field.get(&state.scope)); ok {
+			field.apply(&state.scope, value)
 		}
-		value, ok := controller.choicePage("选择操作系统", []choiceOption{{config.OSWindows, "Windows"}, {config.OSLinux, "Linux"}, {config.OSKylin, "麒麟"}}, current)
-		if ok {
-			if index == 4 {
-				state.project.Platform.Consume.OS = value
-			} else {
-				state.project.Platform.Publish.OS = value
-			}
+	case fieldArch:
+		if value, ok := controller.choicePage("选择架构", archChoiceOptions(), field.get(&state.scope)); ok {
+			field.apply(&state.scope, value)
 		}
-		return
-	}
-	if index == 5 || index == 8 {
-		current := state.project.Platform.Consume.Arch
-		if index == 8 {
-			current = state.project.Platform.Publish.Arch
+	case fieldBuildType:
+		if value, ok := controller.choicePage("选择构建类型", buildTypeChoiceOptions(), field.get(&state.scope)); ok {
+			field.apply(&state.scope, value)
 		}
-		value, ok := controller.choicePage("选择架构", []choiceOption{{config.ArchX86, "x86 32 位"}, {config.ArchX64, "x64 64 位"}, {config.ArchARM, "ARM 32 位"}, {config.ArchARM64, "ARM 64 位"}}, current)
-		if ok {
-			if index == 5 {
-				state.project.Platform.Consume.Arch = value
-			} else {
-				state.project.Platform.Publish.Arch = value
-			}
+	case fieldSecret:
+		if value, ok := controller.editText(title, field.editHint, "", true); ok {
+			field.apply(&state.scope, value)
 		}
-		return
-	}
-	if index == 6 || index == 9 {
-		current := state.project.Platform.Consume.BuildType
-		if index == 9 {
-			current = state.project.Platform.Publish.BuildType
-		}
-		value, ok := controller.choicePage("选择构建类型", []choiceOption{{config.BuildTypeRelease, "Release"}, {config.BuildTypeDebug, "Debug"}}, current)
-		if ok {
-			if index == 6 {
-				state.project.Platform.Consume.BuildType = value
-			} else {
-				state.project.Platform.Publish.BuildType = value
-			}
+	default:
+		if value, ok := controller.editText(title, field.editHint, field.get(&state.scope), false); ok {
+			field.apply(&state.scope, value)
 		}
 	}
 }
 
-func (controller *cursorController) editText(title, label, initial string) (string, bool) {
+func (controller *cursorController) editText(title, label, initial string, secret bool) (string, bool) {
 	value := []rune(initial)
-	if strings.Contains(label, "密码") {
+	if secret {
 		value = nil
 	}
 	position := len(value)
 	for {
 		controller.ui.cursorScreen(title)
 		controller.ui.boxRow("  " + label)
-		controller.ui.boxRow("  " + editorValue(value, position, strings.Contains(label, "密码")))
+		controller.ui.boxRow("  " + editorValue(value, position, secret))
 		controller.ui.boxSeparator("├", "┤")
 		controller.ui.boxRow("  输入文字 · ← → 移动 · Backspace 删除 · Enter 保存 · Esc 取消")
 		controller.ui.boxSeparator("└", "┘")
@@ -1177,8 +1078,11 @@ func (controller *cursorController) publishPage(ctx context.Context) {
 	if form.remote == "" && controller.ui.global != nil {
 		form.remote = controller.ui.global.Nexus.Name
 	}
+	form.name = controller.ui.project.Name
 	if metadata, _, err := controller.ui.app.Client.Inspect(ctx); err == nil {
-		form.name = stringValue(metadata["name"])
+		if form.name == "" {
+			form.name = stringValue(metadata["name"])
+		}
 		form.version = stringValue(metadata["version"])
 	}
 	selected := 0
@@ -1210,7 +1114,7 @@ func (ui *dashboard) renderCursorPublish(form publishCursorForm, selected int) {
 	ui.boxRow("  登录在全局设置完成 · 方向键移动，Enter 编辑 / 选择")
 	ui.boxSeparator("├", "┤")
 	rows := []string{
-		"包名        " + fallback(form.name, "未填写（inspect 失败时必填）"),
+		"包名        " + fallback(form.name, "未识别") + "（改名请到项目设置）",
 		"版本        " + fallback(form.version, "未填写（inspect 失败时必填）"),
 		"channel     " + fallback(form.channel, "dev"),
 		"发布系统    " + fallback(config.DisplayOS(form.os), "未选择"),
@@ -1231,15 +1135,13 @@ func (controller *cursorController) publishEnter(ctx context.Context, form *publ
 	if selected < 8 {
 		switch selected {
 		case 0:
-			if value, ok := controller.editText("发布表单", "包名", form.name); ok {
-				form.name = value
-			}
+			// 包名是项目身份，发布表单只展示，改名走项目设置
 		case 1:
-			if value, ok := controller.editText("发布表单", "版本", form.version); ok {
+			if value, ok := controller.editText("发布表单", "版本", form.version, false); ok {
 				form.version = value
 			}
 		case 2:
-			if value, ok := controller.editText("发布表单", "channel", form.channel); ok {
+			if value, ok := controller.editText("发布表单", "channel", form.channel, false); ok {
 				form.channel = value
 			}
 		case 3:
@@ -1258,11 +1160,11 @@ func (controller *cursorController) publishEnter(ctx context.Context, form *publ
 				form.buildType = value
 			}
 		case 6:
-			if value, ok := controller.editText("发布表单", "远程仓库", form.remote); ok {
+			if value, ok := controller.editText("发布表单", "远程仓库", form.remote, false); ok {
 				form.remote = value
 			}
 		case 7:
-			if value, ok := controller.editText("发布表单", "备注", form.note); ok {
+			if value, ok := controller.editText("发布表单", "备注", form.note, false); ok {
 				form.note = value
 			}
 		}

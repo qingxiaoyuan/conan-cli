@@ -12,7 +12,7 @@ Successful response:
     "os": "kylin",
     "arch": "x64",
     "remote": "nexus",
-    "output_folder": "lib",
+    "output_folder": "conan",
     "missing_binary_policy": "download-only"
   }
 }
@@ -50,7 +50,7 @@ Primary commands for the GUI:
 | 登录 | `CONAN_PASSWORD=... config login` |
 | 测试仓库 | `config test` |
 | 发布预览 | `publish --dry-run --name qtutils --version 1.0 --os kylin --arch x64`（不改配方） |
-| 发布 | `publish --name qtutils --version 1.0 --channel dev --os kylin --arch x64`（先把 name/version 写入 `conanfile.py`，再 create + upload） |
+| 发布 | `publish --name qtutils --version 1.0 --channel dev --os kylin --arch x64`（先把 name/version 写入 `conanfile.py`，再 `export-pkg` 打包本机已编译库并 upload；channel 保存在项目设置并随预览/结果返回，当前上传引用为 `name/version`） |
 | 诊断 | `doctor` |
 
 Passwords travel in `CONAN_PASSWORD` and are written to `~/.conan-cli/credentials` (mode 0600), never as CLI arguments.

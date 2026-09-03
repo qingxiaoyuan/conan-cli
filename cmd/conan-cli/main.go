@@ -365,7 +365,7 @@ Usage:
   conan-cli search [package] [--json]
   conan-cli add <package>/<version> [--json]
   conan-cli install [--os kylin] [--arch x64] [--build-type Release] [--remote nexus] [--json]
-  conan-cli publish [--name n] [--version v] [--os kylin] [--arch x64] [--build-type Release] [--channel dev] [--dry-run] [--json]
+  conan-cli publish [--version v] [--os kylin] [--arch x64] [--build-type Release] [--channel dev] [--dry-run] [--json]
   conan-cli recipe generate --kind consume|publish [--force] [--name n] [--version v] [--qt 6.8] [--json]
   conan-cli doctor [--json]
   conan-cli tui [--dir <path>]

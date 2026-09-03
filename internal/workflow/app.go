@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"conan-cli/internal/atomicfile"
 	"conan-cli/internal/conan"
 	"conan-cli/internal/config"
 	"conan-cli/internal/manifest"
@@ -55,7 +56,7 @@ func newApp(dir string, progress io.Writer) *App {
 	client := conan.New(dir)
 	if os.Getenv("CONAN_BIN") == "" {
 		if global, globalErr := config.LoadGlobal(); globalErr == nil && strings.TrimSpace(global.ConanBin) != "" {
-			client.Binary = global.ConanBin
+			client.UseExecutable(global.ConanBin)
 		}
 	}
 	client.Progress = progress
@@ -95,13 +96,11 @@ func (a *App) Init(ctx context.Context) (Report, error) {
 	}
 
 	fillProjectDefaults(a.Dir, project)
-
-	if err := config.SaveProject(a.Dir, project); err != nil {
-		return Report{}, err
-	}
 	if global, globalErr := config.LoadGlobal(); globalErr == nil && project.Remote == "" && global.Nexus.Name != "" {
 		project.Remote = global.Nexus.Name
-		_ = config.SaveProject(a.Dir, project)
+	}
+	if err := config.SaveProject(a.Dir, project); err != nil {
+		return Report{}, err
 	}
 
 	message := "项目已初始化。请在设置中选择目标平台、Qt 和编译器（与当前开发机无关）"
@@ -114,14 +113,43 @@ func (a *App) Init(ctx context.Context) (Report, error) {
 	return Report{OK: true, Action: "init", Message: message, Data: project}, nil
 }
 
+// resolveRemote is the single remote fallback rule shared by every command:
+// 显式参数 → project.Remote → 全局 Nexus 名。全局仓库只有在名称和 URL 都
+// 配置齐全时才作为兜底，避免把一个没有 URL、实际未注册的 remote 传给
+// Conan。集中在这里保证 CLI / TUI / VS Code 三个入口行为一致。
+func resolveRemote(explicit string, project *config.Project) string {
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" {
+		return explicit
+	}
+	if project != nil && strings.TrimSpace(project.Remote) != "" {
+		return strings.TrimSpace(project.Remote)
+	}
+	if global, err := config.LoadGlobal(); err == nil && global.Nexus.URL != "" && global.Nexus.Name != "" {
+		return global.Nexus.Name
+	}
+	return ""
+}
+
 func fillProjectDefaults(dir string, project *config.Project) {
-	_ = dir
 	if project == nil {
 		return
 	}
-	if project.Platform.Publish.Empty() {
-		project.Platform.Publish = project.Platform.Consume
+	// 只做包名探测；consume → publish 的平台回退统一由 config.applyDefaults
+	// 在每次 SaveProject 时处理，避免多处复制同一规则。
+	applyPackageIdentity(dir, project)
+}
+
+func applyPackageIdentity(dir string, project *config.Project) bool {
+	if project == nil || project.NameLocked && strings.TrimSpace(project.Name) != "" {
+		return false
 	}
+	guess := manifest.DetectPackageName(dir)
+	if guess.Name == "" || guess.Name == project.Name {
+		return false
+	}
+	project.Name = guess.Name
+	return true
 }
 
 func missingTarget(spec config.PlatformSpec) bool {
@@ -149,7 +177,7 @@ func (a *App) Add(dependency string) (Report, error) {
 	}
 	manifestPath, err := manifest.Add(a.Dir, dependency)
 	if err != nil {
-		if restoreErr := os.WriteFile(config.ProjectPath(a.Dir), originalConfig, 0o644); restoreErr != nil {
+		if restoreErr := atomicfile.Write(config.ProjectPath(a.Dir), originalConfig, 0o644); restoreErr != nil {
 			return Report{}, fmt.Errorf("add dependency: %w; restore project config: %v", err, restoreErr)
 		}
 		return Report{}, err
@@ -237,19 +265,12 @@ func (a *App) InstallPlatform(ctx context.Context, request InstallRequest) (Repo
 	if request.Profile == "" {
 		request.Profile = project.DefaultProfile
 	}
-	if request.Remote == "" {
-		request.Remote = project.Remote
-		if request.Remote == "" {
-			if global, globalErr := config.LoadGlobal(); globalErr == nil && global.Nexus.URL != "" {
-				request.Remote = global.Nexus.Name
-			}
-		}
-	}
+	request.Remote = resolveRemote(request.Remote, project)
 	if request.OutputFolder == "" {
 		request.OutputFolder = project.OutputFolder
 	}
 	if request.OutputFolder == "" {
-		request.OutputFolder = "lib"
+		request.OutputFolder = config.DefaultOutputFolder
 	}
 	project.OutputFolder = request.OutputFolder
 	spec := project.Platform.Consume
@@ -266,10 +287,11 @@ func (a *App) InstallPlatform(ctx context.Context, request InstallRequest) (Repo
 		return Report{}, errors.New("请先选择目标操作系统和架构，再拉取 Conan 依赖")
 	}
 	project.Platform.Consume = spec
-	if project.Platform.Publish.Empty() {
-		project.Platform.Publish = spec
+	// 保存失败不阻塞下载本身，但不能静默吞掉：把它带进报告数据。
+	warning := ""
+	if saveErr := config.SaveProject(a.Dir, project); saveErr != nil {
+		warning = "项目配置保存失败（不影响本次下载）：" + saveErr.Error()
 	}
-	_ = config.SaveProject(a.Dir, project)
 	settings := platform.Resolve(spec, project.Compiler, project.QtVersion)
 	result, err := a.Client.Install(ctx, request.OutputFolder, request.Profile, request.Remote, settings.Args()...)
 	report := reportFromResult("install", result, err)
@@ -284,6 +306,9 @@ func (a *App) InstallPlatform(ctx context.Context, request InstallRequest) (Repo
 		"conan_settings":        settings.Map(),
 		"qt_version":            project.QtVersion,
 		"compiler":              project.Compiler.Display(),
+	}
+	if warning != "" {
+		data["warning"] = warning
 	}
 	if err != nil {
 		data["hint"] = "仓库中没有匹配该平台的二进制，未执行本机编译。请检查仓库或改目标平台。"
@@ -310,6 +335,23 @@ type PublishRequest struct {
 	DryRun          bool
 }
 
+// publishPlan is a fully resolved publish target: identity, remote, platform,
+// toolchain, and the Conan settings derived from them. resolvePublishPlan
+// produces it so PublishPackage stays a short orchestration.
+type publishPlan struct {
+	Name      string
+	Version   string
+	Reference string
+	Channel   string
+	Remote    string
+	Profile   string
+	Note      string
+	Spec      config.PlatformSpec
+	Compiler  config.Compiler
+	QtVersion string
+	Settings  platform.Settings
+}
+
 func (a *App) Publish(ctx context.Context, profileName, remote, reference, channel string) (Report, error) {
 	return a.PublishPackage(ctx, PublishRequest{Profile: profileName, Remote: remote, Ref: reference, Channel: channel})
 }
@@ -319,30 +361,55 @@ func (a *App) PublishPackage(ctx context.Context, request PublishRequest) (Repor
 	if err != nil {
 		return Report{}, err
 	}
-	if request.Profile == "" {
-		request.Profile = project.DefaultProfile
+	plan, err := a.resolvePublishPlan(ctx, project, request)
+	if err != nil {
+		return Report{}, err
 	}
-	if request.Remote == "" {
-		request.Remote = project.Remote
-		if request.Remote == "" {
-			if global, globalErr := config.LoadGlobal(); globalErr == nil && global.Nexus.URL != "" {
-				request.Remote = global.Nexus.Name
-			}
+	if !request.DryRun && !manifest.HasPrebuiltLibraries(a.Dir) {
+		return Report{}, errors.New("未找到已编译的库（例如 lib/*.so、lib/*.a、lib/*.dll）。请先用发布页同一套系统/编译器/Qt/Debug|Release 在本机编好，再发布")
+	}
+	recipePlan := manifest.PlanPublishIdentity(a.Dir)
+	summary := plan.summary(recipePlan)
+	if request.DryRun {
+		return Report{OK: true, Action: "publish-preview", Message: recipePlan.Hint(), Data: summary}, nil
+	}
+	applied, err := a.applyPublishRecipe(plan, project.BuildSystem)
+	if err != nil {
+		return Report{OK: false, Action: "publish", Error: err.Error(), Data: summary}, err
+	}
+	summary["recipe_action"] = applied.Action
+	summary["recipe_path"] = applied.Path
+	report, err := a.uploadPackage(ctx, plan)
+	report.Data = summary
+	return report, err
+}
+
+// resolvePublishPlan fills every publish default: profile, remote (via the
+// shared resolveRemote rule), package identity (request → ref → project →
+// recipe inspect), publish platform, and toolchain. It may lock and persist a
+// renamed package identity as a side effect.
+func (a *App) resolvePublishPlan(ctx context.Context, project *config.Project, request PublishRequest) (*publishPlan, error) {
+	plan := &publishPlan{
+		Channel: strings.TrimSpace(request.Channel),
+		Note:    request.Note,
+		Profile: request.Profile,
+	}
+	if plan.Profile == "" {
+		plan.Profile = project.DefaultProfile
+	}
+	plan.Remote = resolveRemote(request.Remote, project)
+	if plan.Remote == "" && !request.DryRun {
+		return nil, errors.New("未配置远程仓库，请先在设置页填写 Nexus 地址")
+	}
+
+	if applyPackageIdentity(a.Dir, project) {
+		if err := config.SaveProject(a.Dir, project); err != nil {
+			return nil, fmt.Errorf("保存项目配置失败: %w", err)
 		}
-	}
-	if request.Remote == "" && !request.DryRun {
-		return Report{}, errors.New("未配置远程仓库，请先在设置页填写 Nexus 地址")
-	}
-	if request.Remote == "" {
-		request.Remote = ""
-	}
-	if request.Channel == "" {
-		request.Channel = project.Channel
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.Version = strings.TrimSpace(request.Version)
-	reference := strings.TrimSpace(request.Ref)
-	if (request.Name == "" || request.Version == "") && reference != "" {
+	if reference := strings.TrimSpace(request.Ref); reference != "" && (request.Name == "" || request.Version == "") {
 		name, version := splitNameVersion(reference)
 		if request.Name == "" {
 			request.Name = name
@@ -351,24 +418,28 @@ func (a *App) PublishPackage(ctx context.Context, request PublishRequest) (Repor
 			request.Version = version
 		}
 	}
-	if request.Name == "" || request.Version == "" {
-		metadata, _, inspectErr := a.Client.Inspect(ctx)
-		if inspectErr != nil {
-			return Report{}, fmt.Errorf("请填写包名和版本，或先生成发布配方: %w", inspectErr)
+	identity := strings.TrimSpace(project.Name)
+	if request.Name == "" {
+		request.Name = identity
+	} else if identity != "" && request.Name != identity {
+		project.Name = request.Name
+		project.NameLocked = true
+		if err := config.SaveProject(a.Dir, project); err != nil {
+			return nil, fmt.Errorf("保存项目配置失败: %w", err)
 		}
-		name, _ := metadata["name"].(string)
-		version, _ := metadata["version"].(string)
-		if request.Name == "" {
-			request.Name = strings.TrimSpace(name)
-		}
-		if request.Version == "" {
+	}
+	if request.Version == "" {
+		if metadata, _, inspectErr := a.Client.Inspect(ctx); inspectErr == nil {
+			version, _ := metadata["version"].(string)
 			request.Version = strings.TrimSpace(version)
 		}
 	}
 	if err := validatePublishIdentity(request.Name, request.Version); err != nil {
-		return Report{}, err
+		return nil, err
 	}
-	reference = request.Name + "/" + request.Version
+	plan.Name, plan.Version = request.Name, request.Version
+	plan.Reference = request.Name + "/" + request.Version
+
 	spec := project.Platform.Publish
 	if request.OS != "" {
 		spec.OS = request.OS
@@ -380,7 +451,7 @@ func (a *App) PublishPackage(ctx context.Context, request PublishRequest) (Repor
 		spec.BuildType = request.BuildType
 	}
 	if missingTarget(spec) {
-		return Report{}, errors.New("请在发布页选择目标操作系统和架构")
+		return nil, errors.New("请在发布页选择目标操作系统和架构")
 	}
 	compiler := project.Compiler
 	if request.Compiler != "" {
@@ -394,70 +465,82 @@ func (a *App) PublishPackage(ctx context.Context, request PublishRequest) (Repor
 		qt = project.QtVersion
 	}
 	if strings.TrimSpace(compiler.ID) == "" || strings.TrimSpace(compiler.Version) == "" {
-		return Report{}, errors.New("请在发布页填写编译器类型和版本，例如 gcc 13")
+		return nil, errors.New("请在发布页填写编译器类型和版本，例如 gcc 13")
 	}
 	if qt == "" {
-		return Report{}, errors.New("请在发布页填写 Qt 版本，例如 6.8")
+		return nil, errors.New("请在发布页填写 Qt 版本，例如 6.8")
 	}
-	settings := platform.Resolve(spec, compiler, qt)
-	recipePlan := manifest.PlanPublishIdentity(a.Dir)
-	summary := map[string]any{
-		"reference":      reference,
-		"name":           request.Name,
-		"version":        request.Version,
-		"profile":        request.Profile,
-		"remote":         request.Remote,
-		"channel":        request.Channel,
-		"os":             settings.OS,
-		"arch":           settings.Arch,
-		"build_type":     settings.BuildType,
-		"compiler":       compiler.Display(),
-		"qt_version":     qt,
-		"conan_settings": settings.Map(),
-		"note":           request.Note,
+	plan.Spec, plan.Compiler, plan.QtVersion = spec, compiler, qt
+	plan.Settings = platform.Resolve(spec, compiler, qt)
+	return plan, nil
+}
+
+// summary renders the data payload shared by dry-run preview and the real
+// publish report.
+func (p *publishPlan) summary(recipePlan manifest.IdentityResult) map[string]any {
+	return map[string]any{
+		"reference":      p.Reference,
+		"name":           p.Name,
+		"version":        p.Version,
+		"channel":        p.Channel,
+		"profile":        p.Profile,
+		"remote":         p.Remote,
+		"os":             p.Settings.OS,
+		"arch":           p.Settings.Arch,
+		"build_type":     p.Settings.BuildType,
+		"compiler":       p.Compiler.Display(),
+		"qt_version":     p.QtVersion,
+		"conan_settings": p.Settings.Map(),
+		"note":           p.Note,
 		"recipe_action":  recipePlan.Action,
 		"recipe_path":    recipePlan.Path,
 		"recipe_hint":    recipePlan.Hint(),
-		"command":        fmt.Sprintf("conan-cli publish --remote %s --channel %s --os %s --arch %s --build-type %s --compiler %s --compiler-version %s --qt %s --name %s --version %s", request.Remote, request.Channel, settings.OS, settings.Arch, settings.BuildType, compiler.ID, compiler.Version, qt, request.Name, request.Version),
+		"command": fmt.Sprintf("conan-cli publish --remote %s --os %s --arch %s --build-type %s --compiler %s --compiler-version %s --qt %s --name %s --version %s",
+			p.Remote, p.Settings.OS, p.Settings.Arch, p.Settings.BuildType, p.Compiler.ID, p.Compiler.Version, p.QtVersion, p.Name, p.Version),
 	}
-	if request.DryRun {
-		return Report{OK: true, Action: "publish-preview", Message: recipePlan.Hint(), Data: summary}, nil
-	}
+}
+
+// applyPublishRecipe patches name/version/Qt into the recipe and persists the
+// publish toolchain so the next publish starts from the same target.
+func (a *App) applyPublishRecipe(plan *publishPlan, buildSystem string) (manifest.IdentityResult, error) {
 	applied, err := manifest.ApplyPublishIdentity(a.Dir, manifest.PublishIdentity{
-		Name:        request.Name,
-		Version:     request.Version,
-		QtVersion:   qt,
-		BuildSystem: project.BuildSystem,
+		Name:        plan.Name,
+		Version:     plan.Version,
+		QtVersion:   plan.QtVersion,
+		BuildSystem: buildSystem,
 	})
 	if err != nil {
-		return Report{OK: false, Action: "publish", Error: err.Error(), Data: summary}, err
+		return applied, err
 	}
-	summary["recipe_action"] = applied.Action
-	summary["recipe_path"] = applied.Path
-	if _, saveErr := a.SaveProjectSettings(ProjectSettingsInput{
-		Name: request.Name, QtVersion: qt, CompilerID: compiler.ID, CompilerVersion: compiler.Version,
-		PublishOS: spec.OS, PublishArch: spec.Arch, PublishBuildType: spec.BuildType, Channel: request.Channel,
-	}); saveErr != nil {
-		return Report{OK: false, Action: "publish", Error: saveErr.Error(), Data: summary}, saveErr
+	if _, err := a.SaveProjectSettings(ProjectSettingsInput{
+		QtVersion: plan.QtVersion, CompilerID: plan.Compiler.ID, CompilerVersion: plan.Compiler.Version,
+		PublishOS: plan.Spec.OS, PublishArch: plan.Spec.Arch, PublishBuildType: plan.Spec.BuildType,
+	}); err != nil {
+		return applied, err
 	}
-	createUser, createChannel := referenceCoordinates(request.Ref, request.Channel)
-	if createUser == "" {
-		createUser, createChannel = referenceCoordinates(reference, request.Channel)
-	}
-	create, err := a.Client.Create(ctx, request.Profile, createUser, createChannel, settings.Args()...)
+	return applied, nil
+}
+
+// uploadPackage packs the prebuilt libraries with export-pkg and uploads the
+// reference to the remote.
+func (a *App) uploadPackage(ctx context.Context, plan *publishPlan) (Report, error) {
+	packed, err := a.Client.ExportPkg(ctx, plan.Profile, plan.Settings.Args()...)
 	if err != nil {
-		return reportFromResult("publish", create, err), err
+		return reportFromResult("publish", packed, err), err
 	}
-	upload, err := a.Client.Upload(ctx, reference, request.Remote)
+	upload, err := a.Client.Upload(ctx, plan.Reference, plan.Remote)
 	if err != nil {
 		return reportFromResult("publish", upload, err), err
 	}
-	return Report{OK: true, Action: "publish", Message: "已更新 conanfile.py，包已创建并上传", Output: joinOutput(resultOutput(create), resultOutput(upload)), Data: summary}, nil
+	return Report{OK: true, Action: "publish", Message: "已打包本机预编译库并上传", Output: joinOutput(resultOutput(packed), resultOutput(upload))}, nil
 }
 
 func validatePublishIdentity(name, version string) error {
-	if strings.TrimSpace(name) == "" || strings.TrimSpace(version) == "" {
-		return errors.New("请在发布页填写包名和版本号")
+	if strings.TrimSpace(name) == "" {
+		return errors.New("无法确定包名。请在设置中填写 Conan 包名")
+	}
+	if strings.TrimSpace(version) == "" {
+		return errors.New("请在发布页填写版本号")
 	}
 	if strings.ContainsAny(name, "/@ \t") {
 		return errors.New("包名不能包含空格或 / @")
@@ -471,7 +554,11 @@ func validatePublishIdentity(name, version string) error {
 func (a *App) Doctor(ctx context.Context) (Report, error) {
 	checks := []Check{}
 	version, versionErr := a.Client.Version(ctx)
-	checks = append(checks, Check{Name: "conan", OK: versionErr == nil, Detail: firstLine(version.Stdout, version.Stderr)})
+	conanDetail := firstLine(version.Stdout, version.Stderr)
+	if versionErr == nil && len(a.Client.BaseArgs) > 0 {
+		conanDetail = strings.TrimSpace(conanDetail + "（插件内置 Python）")
+	}
+	checks = append(checks, Check{Name: "conan", OK: versionErr == nil, Detail: conanDetail})
 	project, projectErr := a.Project()
 	checks = append(checks, Check{Name: "project_config", OK: projectErr == nil, Detail: config.ProjectPath(a.Dir)})
 	hasRecipe := hasConanfile(a.Dir)
@@ -588,21 +675,6 @@ func splitNameVersion(reference string) (string, string) {
 		return "", ""
 	}
 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-}
-
-func referenceCoordinates(reference, fallbackChannel string) (string, string) {
-	channel := fallbackChannel
-	user := ""
-	parts := strings.SplitN(reference, "@", 2)
-	if len(parts) != 2 {
-		return user, channel
-	}
-	coordinates := strings.SplitN(parts[1], "/", 2)
-	if len(coordinates) == 2 {
-		user = coordinates[0]
-		channel = coordinates[1]
-	}
-	return user, channel
 }
 
 func remoteListContains(output, wanted string) bool {

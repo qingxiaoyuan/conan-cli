@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"conan-cli/internal/atomicfile"
 )
 
 var ErrDynamicRequirements = errors.New("dynamic requirements() is not statically inspectable")
@@ -38,7 +40,7 @@ func Add(dir, dependency string) (string, error) {
 		return addToPythonRecipe(pyPath, dependency)
 	}
 	content := defaultTextManifest(dependency, "")
-	if err := writeAtomic(txtPath, []byte(content), 0o644); err != nil {
+	if err := atomicfile.Write(txtPath, []byte(content), 0o644); err != nil {
 		return "", fmt.Errorf("create conanfile.txt: %w", err)
 	}
 	return txtPath, nil
@@ -61,7 +63,7 @@ func EnsureText(dir, buildSystem string) (string, bool, error) {
 		return filepath.Join(dir, "conanfile.py"), false, nil
 	}
 	path := filepath.Join(dir, "conanfile.txt")
-	if err := writeAtomic(path, []byte(defaultTextManifest("", buildSystem)), 0o644); err != nil {
+	if err := atomicfile.Write(path, []byte(defaultTextManifest("", buildSystem)), 0o644); err != nil {
 		return "", false, fmt.Errorf("create conanfile.txt: %w", err)
 	}
 	return path, true, nil
@@ -188,7 +190,7 @@ func addToTextManifest(path, dependency string) (string, error) {
 		lines[insertIndex] = dependency
 		text = strings.Join(lines, "\n")
 	}
-	if err := writeAtomic(path, []byte(text), 0o644); err != nil {
+	if err := atomicfile.Write(path, []byte(text), 0o644); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
 	return path, nil
@@ -210,7 +212,7 @@ func addToPythonRecipe(path, dependency string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := writeAtomic(path, []byte(updated), 0o644); err != nil {
+	if err := atomicfile.Write(path, []byte(updated), 0o644); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
 	return path, nil
@@ -270,30 +272,4 @@ func insertRequiresAssignment(text, dependency string) (string, bool) {
 		return text[:loc[1]] + block + text[loc[1]:], true
 	}
 	return text, false
-}
-
-func writeAtomic(path string, data []byte, mode os.FileMode) error {
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".conanfile.*")
-	if err != nil {
-		return err
-	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-
-	if err := temporary.Chmod(mode); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(data); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporaryName, path)
 }

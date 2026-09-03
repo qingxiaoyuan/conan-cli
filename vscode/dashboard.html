@@ -211,8 +211,8 @@
         </details>
         <div class="field" style="max-width:360px">
           <label>拉取到目录</label>
-          <input id="p-out" placeholder="lib">
-          <p class="hint">相对项目根目录，默认 lib。可改成任意子目录。</p>
+          <input id="p-out" placeholder="conan">
+          <p class="hint">相对项目根目录，默认 conan。这里只放 install 生成的 pri/cmake，自己编的库仍在 lib/。</p>
         </div>
         <div class="actions">
           <button class="btn" data-act="analyze">检查依赖</button>
@@ -255,15 +255,16 @@
 
       <section class="page" data-section="publish">
         <h2>发布包</h2>
-        <p class="sub">先改包名和版本。点发布会先写入 conanfile.py，再打包上传。登录在设置里完成。</p>
+        <p class="sub">请先用对应套件在本机编好库。点发布只打包已有头文件和二进制，不会再编译。系统/编译器/Qt/Debug|Release 写入包标识，拉取时必须一致。</p>
         <div style="max-width:640px">
           <div class="card" style="margin:0 0 16px">
             <div class="label" style="margin-bottom:8px">发布信息</div>
             <div class="row3" style="margin-top:0">
-              <div class="field" style="margin:0"><label>包名</label><input id="pub-name" placeholder="例如 qtutils"></div>
+              <div class="field" style="margin:0"><label>包名</label><div class="mono" id="pub-name" style="height:32px;display:flex;align-items:center;padding:0 10px;border:1px solid var(--input-border);border-radius:6px;background:var(--input-bg);opacity:.9"></div></div>
               <div class="field" style="margin:0"><label>版本</label><input id="pub-version" placeholder="例如 1.0"></div>
               <div class="field" style="margin:0"><label>channel</label><input id="pub-channel" placeholder="dev"></div>
             </div>
+            <p class="hint" id="pub-name-hint" style="margin-top:8px">包名按库的通行名自动识别，发布时不能改。改名请到设置（会变成仓库里的新包）。</p>
             <div class="field" style="margin-top:12px;margin-bottom:0"><label>备注（可选）</label><input id="pub-note" placeholder="本次发布说明，可留空"></div>
             <p class="hint" id="pub-recipe-hint" style="margin-top:10px"></p>
           </div>
@@ -290,6 +291,13 @@
       </section>
 
       <section class="page" data-section="settings">
+        <h2>设置</h2>
+        <p class="sub">包名是仓库里的身份，不是文件夹名。改名后旧的 requires 会失效。</p>
+        <div style="max-width:520px;margin-bottom:24px">
+          <div class="field"><label>Conan 包名</label><input id="p-pkg-name" placeholder="例如 goodluckbutton"></div>
+          <p class="hint" id="pkg-name-hint">按库通行名自动识别。只有探测错了或要换身份时才改。</p>
+          <div class="actions"><button class="btn" data-act="save-pkg-name">保存包名</button></div>
+        </div>
         <h2>仓库登录</h2>
         <p class="sub">已保存的地址和用户名会显示在下面，不必每次重填。密码不会回显，已保存则留空。</p>
         <div style="max-width:520px">
@@ -361,7 +369,7 @@
       if (pubBt) payload.publishBuildType = pubBt;
       if (Object.keys(payload).length) api.postMessage({type:'save-project-quiet', payload});
     };
-    const outDir = () => ($('p-out').value.trim() || 'lib').replace(/\\/g, '/');
+    const outDir = () => ($('p-out').value.trim() || 'conan').replace(/\\/g, '/');
     const persistMatch = () => {
       api.postMessage({type:'save-project-quiet', payload:{
         qt:$('p-qt').value.trim(), compiler:$('p-compiler').value.trim(), compilerVersion:$('p-compiler-ver').value.trim(),
@@ -404,22 +412,32 @@
         ? ('将按 ' + displayOs(osSel) + ' / ' + displayArch(archSel) + ' · ' + (btSel || 'Release') + ' 拉取到 ' + outDir() + '/' + (g.has_password ? '' : '。请先到设置里登录仓库'))
         : '请先选操作系统和架构';
       const recipe = (state.status && state.status.recipe) || {};
-      if (!$('pub-name').dataset.touched) $('pub-name').value = recipe.name || p.name || '';
+      const pkg = (state.status && state.status.package_name) || {};
+      const pubName = p.name || pkg.name || '';
+      $('pub-name').textContent = pubName || '未识别';
+      if (!$('p-pkg-name').dataset.touched) $('p-pkg-name').value = pubName;
+      const srcHint = {qmake:'qmake TARGET', cmake:'CMake', include:'头文件目录', recipe:'已有配方', directory:'目录名'}[pkg.source] || pkg.source || '';
+      if (pkg.name && srcHint && pkg.source !== 'directory') {
+        $('pub-name-hint').textContent = '已按' + srcHint + '识别为 ' + pubName + '。发布页不能改；改名请到设置。';
+        $('pkg-name-hint').textContent = '当前按' + srcHint + '识别。改名会变成仓库里的新包，旧引用失效。';
+      } else {
+        $('pub-name-hint').textContent = '包名按库的通行名自动识别，发布时不能改。改名请到设置（会变成仓库里的新包）。';
+        $('pkg-name-hint').textContent = '按库通行名自动识别。只有探测错了或要换身份时才改。';
+      }
       if (!$('pub-version').dataset.touched) $('pub-version').value = recipe.version || '';
       if (!$('pub-channel').dataset.touched) $('pub-channel').value = p.channel || 'dev';
       if (!$('pub-qt').dataset.touched) $('pub-qt').value = p.qt_version || '';
       if (!$('pub-compiler').dataset.touched) $('pub-compiler').value = (p.compiler && p.compiler.id) || '';
       if (!$('pub-compiler-ver').dataset.touched) $('pub-compiler-ver').value = (p.compiler && p.compiler.version) || '';
-      const pubName = $('pub-name').value.trim();
       const pubVer = $('pub-version').value.trim();
       const pubReady = pubName && pubVer && pubOs && pubArch && $('pub-qt').value.trim() && $('pub-compiler').value.trim() && $('pub-compiler-ver').value.trim();
       $('pub-meta').textContent = pubReady
         ? (pubName + '/' + pubVer + ' · ' + displayOs(pubOs) + ' / ' + displayArch(pubArch) + ' · ' + (pubBt || 'Release') + ' · ' + $('pub-compiler').value.trim() + ' ' + $('pub-compiler-ver').value.trim() + ' · Qt ' + $('pub-qt').value.trim() + (g.has_password ? ' · 已登录' : ' · 未登录'))
-        : '请填完包名、版本、发布平台、编译器和 Qt 版本';
+        : '请填完版本、发布平台、编译器和 Qt 版本';
       const hasPy = state.status && state.status.conanfile === 'conanfile.py';
-      if (recipe.kind === 'consume') $('pub-recipe-hint').textContent = '当前是消费配方。点发布会改成发布配方，再把包名/版本写入 conanfile.py 并打包上传。';
-      else if (!hasPy) $('pub-recipe-hint').textContent = '还没有 conanfile.py。点发布会先生成发布配方，再打包上传。';
-      else $('pub-recipe-hint').textContent = '点发布会先把上面的包名和版本写入 conanfile.py，再打包上传。手工配方只改 name/version，不会覆盖 build()。';
+      if (recipe.kind === 'consume') $('pub-recipe-hint').textContent = '当前是消费配方。点发布会改成发布配方，并打包本机已编译的库（不会再编译）。';
+      else if (!hasPy) $('pub-recipe-hint').textContent = '还没有 conanfile.py。点发布会先生成发布配方，再打包本机 lib/ 里已有的库。';
+      else $('pub-recipe-hint').textContent = '点发布会更新配方并打包本机已编译的库和头文件，不会调用 qmake/make。请先按发布页的 Debug/Release 编好。';
       document.querySelectorAll('[data-act="publish-preview"]').forEach((b) => { b.disabled = !pubReady; });
       if (!$('g-url').dataset.touched) $('g-url').value = nexus.url || '';
       if (!$('g-user').dataset.touched) $('g-user').value = nexus.username || '';
@@ -435,7 +453,7 @@
       if (!$('p-qt').dataset.touched) $('p-qt').value = p.qt_version || '';
       if (!$('p-compiler').dataset.touched) $('p-compiler').value = (p.compiler && p.compiler.id) || '';
       if (!$('p-compiler-ver').dataset.touched) $('p-compiler-ver').value = (p.compiler && p.compiler.version) || '';
-      if (!$('p-out').dataset.touched) $('p-out').value = p.output_folder || 'lib';
+      if (!$('p-out').dataset.touched) $('p-out').value = p.output_folder || 'conan';
       document.querySelectorAll('[data-act="install"]').forEach((b) => { b.disabled = !(osSel && archSel); });
       const recipeBtn = $('recipe-consume');
       if (recipeBtn) {
@@ -499,24 +517,35 @@
     function esc(v){ return String(v??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
     document.querySelectorAll('[data-view]').forEach((b)=>b.addEventListener('click', () => show(b.dataset.view)));
     document.querySelectorAll('[data-act]').forEach((b)=>b.addEventListener('click', () => act(b.dataset.act)));
-    ['pub-name','pub-version','pub-channel','pub-note','pub-qt','pub-compiler','pub-compiler-ver','g-url','g-user','g-pass'].forEach((id)=>$(id).addEventListener('input',()=>{ $(id).dataset.touched='1'; render(); }));
+    ['pub-version','pub-channel','pub-note','pub-qt','pub-compiler','pub-compiler-ver','g-url','g-user','g-pass','p-pkg-name'].forEach((id)=>$(id).addEventListener('input',()=>{ $(id).dataset.touched='1'; render(); }));
     ['p-qt','p-compiler','p-compiler-ver','p-out'].forEach((id)=>$(id).addEventListener('change', () => { $(id).dataset.touched='1'; persistMatch(); }));
     $('cat-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') act('catalog'); });
     $('modal-cancel').onclick=()=>$('modal').classList.remove('show');
     $('modal-ok').onclick=()=>{ $('modal').classList.remove('show'); api.postMessage({type:'publish', payload: publishPayload()}); };
     function publishPayload(){
+      const p = (state.status && state.status.project) || {};
+      const pkg = (state.status && state.status.package_name) || {};
       return {
-        name:$('pub-name').value.trim(), version:$('pub-version').value.trim(),
+        version:$('pub-version').value.trim(),
         channel:$('pub-channel').value.trim() || 'dev', note:$('pub-note').value.trim(),
         os:pubOs, arch:pubArch, buildType: pubBt || 'Release', qt:$('pub-qt').value.trim(),
-        compiler:$('pub-compiler').value.trim(), compilerVersion:$('pub-compiler-ver').value.trim()
+        compiler:$('pub-compiler').value.trim(), compilerVersion:$('pub-compiler-ver').value.trim(),
+        _name: p.name || pkg.name || ''
       };
     }
     function act(name){
+      if(name==='save-pkg-name'){
+        const next = $('p-pkg-name').value.trim();
+        const cur = ((state.status && state.status.project) || {}).name || '';
+        if (!next) return;
+        if (next !== cur && !window.confirm('改包名会变成仓库里的新包，旧引用全部失效。确定改成 ' + next + '？')) return;
+        api.postMessage({type:'save-project', payload:{name:next}});
+        return;
+      }
       if(name==='publish-preview'){
         const pld = publishPayload();
-        if (!(pld.name && pld.version && pld.os && pld.arch && pld.qt && pld.compiler && pld.compilerVersion)) return;
-        $('modal-text').textContent = '将把 conanfile.py 改为 ' + pld.name + '/' + pld.version + '，然后打包上传 · ' + displayOs(pld.os) + ' / ' + displayArch(pld.arch) + ' · ' + (pld.buildType || 'Release') + ' · ' + pld.compiler + ' ' + pld.compilerVersion + ' · Qt ' + pld.qt + ' · channel ' + pld.channel;
+        if (!(pld._name && pld.version && pld.os && pld.arch && pld.qt && pld.compiler && pld.compilerVersion)) return;
+        $('modal-text').textContent = '将打包本机已编译的 ' + pld._name + '/' + pld.version + '（不再编译）· ' + displayOs(pld.os) + ' / ' + displayArch(pld.arch) + ' · ' + (pld.buildType || 'Release') + ' · ' + pld.compiler + ' ' + pld.compilerVersion + ' · Qt ' + pld.qt;
         $('modal').classList.add('show');
         return;
       }
@@ -530,7 +559,7 @@
         api.postMessage({type:'recipe-generate', kind:'consume', qt:$('p-qt').value.trim()});
         return;
       }
-      if(name==='recipe-publish'){ api.postMessage({type:'recipe-generate', kind:'publish', name:$('pub-name').value.trim(), version:$('pub-version').value.trim(), qt:$('pub-qt').value.trim()}); return; }
+      if(name==='recipe-publish'){ api.postMessage({type:'recipe-generate', kind:'publish', version:$('pub-version').value.trim(), qt:$('pub-qt').value.trim()}); return; }
       if(name==='install'){ persistMatch(); api.postMessage({type:'install', os:osSel, arch:archSel, buildType: btSel || 'Release', outputFolder: outDir()}); return; }
       if(name==='analyze'){ persistMatch(); api.postMessage({type:'analyze', os:osSel, arch:archSel, buildType: btSel || 'Release'}); return; }
       api.postMessage({type:name, os:osSel, arch:archSel});

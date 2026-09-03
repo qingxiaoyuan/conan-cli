@@ -2,7 +2,7 @@
   "name": "conan-cli-vscode",
   "displayName": "Conan CLI",
   "description": "在 Visual Studio Code 中管理 Conan 项目。",
-  "version": "0.4.14",
+  "version": "0.4.21",
   "publisher": "local",
   "icon": "media/conan.png",
   "engines": {
@@ -18,7 +18,6 @@
     "onCommand:conanCli.install",
     "onCommand:conanCli.doctor",
     "onCommand:conanCli.add",
-    "onCommand:conanCli.search",
     "onCommand:conanCli.publish",
     "onCommand:conanCli.scan",
     "onCommand:conanCli.analyze",
@@ -35,10 +34,27 @@
           "default": "",
           "description": "conan-cli 路径。留空使用插件自带的 CLI；也可填绝对路径或 ${workspaceFolder}/bin/conan-cli。"
         },
+        "conanCli.conanBinary": {
+          "type": "string",
+          "default": "",
+          "description": "Conan 可执行文件。留空使用插件自带的 Python + Conan 2；也可填系统 conan 的绝对路径。"
+        },
         "conanCli.showCommandOutput": {
           "type": "boolean",
           "default": true,
           "description": "命令完成后显示 Conan CLI 输出面板。"
+        },
+        "conanCli.commandTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "description": "普通命令（status、analyze、doctor 等）的超时时间（秒）。"
+        },
+        "conanCli.longCommandTimeoutMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "长命令（install 下载、publish 上传）的超时时间（分钟）。"
         }
       }
     },
@@ -47,7 +63,6 @@
       { "command": "conanCli.install", "title": "Conan：安装依赖", "icon": "$(cloud-download)" },
       { "command": "conanCli.doctor", "title": "Conan：运行诊断", "icon": "$(heart)" },
       { "command": "conanCli.add", "title": "Conan：添加依赖", "icon": "$(add)" },
-      { "command": "conanCli.search", "title": "Conan：搜索包", "icon": "$(search)" },
       { "command": "conanCli.publish", "title": "Conan：发布包", "icon": "$(cloud-upload)" },
       { "command": "conanCli.scan", "title": "Conan：扫描 Qt/编译器", "icon": "$(search)" },
       { "command": "conanCli.analyze", "title": "Conan：依赖分析", "icon": "$(graph)" },

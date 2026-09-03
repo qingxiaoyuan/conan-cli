@@ -11,14 +11,14 @@
 - `install --os/--arch --build-type` 只下载二进制（`--build=never`）；Debug 与 Release 是两套制品
 - `config` 管理本机 Nexus 地址和登录（密码不进 git）
 - `settings` 管理项目 Qt、编译器、使用/发布平台、channel
-- `publish` 支持表单字段和 `--dry-run` 预览；正式发布会先把包名/版本写入 `conanfile.py`，再 create + upload
+- `publish` 支持表单字段和 `--dry-run` 预览；正式发布会先把包名/版本写入 `conanfile.py`，再 `export-pkg` 打包本机已编译的库并 upload
 - VS Code 控制台：概览、依赖分析、下载、发布、设置、诊断
 
 平台是 **操作系统 + 架构**：Windows / Linux / 麒麟 × x86 32 位 / x64 64 位 / ARM 32 位 / ARM 64 位。编译器和 Qt 是项目设置，查找时再组合。
 
 ## 构建
 
-需要 Go 1.22+ 和 Conan 2：
+需要 Go 1.22+。命令行直接用时本机还要有 Conan 2；VS Code 插件已内置便携 Python 和 Conan 2。
 
 ```bash
 go mod tidy
@@ -65,14 +65,14 @@ platform:
 remote: nexus
 channel: dev
 missing_binary_policy: download-only
-output_folder: lib
+output_folder: conan
 dependencies:
   - fmt/10.2.1
 ```
 
 ## VS Code 插件
 
-见 [vscode/README.md](vscode/README.md)。建议设置：
+见 [vscode/README.md](vscode/README.md)。发布用的 `.vsix` 已带各平台 `conan-cli`、Python 和 Conan 2。开发时若要用仓库里的 CLI：
 
 ```json
 { "conanCli.binary": "bin/conan-cli" }

@@ -4,13 +4,21 @@
 
 ## 本地验证
 
-发布用的 `.vsix` 已内置对应平台的 `conan-cli`，一般不用再配路径。
+发布用的 `.vsix` 已内置对应平台的 `conan-cli`、便携 Python 3.12 和 Conan 2，一般不用再配路径，也不用本机再装 Conan。
 
-1. `code --install-extension dist/conan-cli-vscode-0.4.14.vsix`
+1. `code --install-extension dist/conan-cli-vscode-0.4.21.vsix`
 2. 打开一个 C/C++ 或 Qt 项目
 3. 点活动栏 Conan 图标
 
-若仍找不到 CLI，在设置里把 `conanCli.binary` 指到绝对路径。本机 Conan 2 仍需单独安装，插件只内置 `conan-cli` 封装层。
+若仍找不到 CLI，在设置里把 `conanCli.binary` 指到绝对路径。若要改用系统 Conan，填写 `conanCli.conanBinary`。
+
+打包：
+
+```bash
+./scripts/package-vscode.sh
+```
+
+脚本会下载各平台便携 Python、把 Conan 2.32 装进 `vscode/runtime/<platform>/`，再打出 `.vsix`（约 220MB，含 5 个平台）。只准备某一个平台的 runtime 可加参数，例如 `./scripts/bundle-runtime.sh linux-x64`。
 
 控制台页面：
 
@@ -18,8 +26,8 @@
 - 依赖分析：配方对齐 + 选定平台制品
 - 拉取依赖：选目标平台后执行 conan install（只取仓库二进制）
 - 仓库：查看远程已有组件和已发布版本
-- 发布：改包名/版本后确认，先写入 `conanfile.py` 再 create + upload
-- 设置：全局 Nexus 登录（本机），项目 Qt/编译器/平台
+- 发布：包名按库通行名自动识别（发布页只读）；填版本后确认，先写入 `conanfile.py` 再打包上传
+- 设置：Conan 包名（改名会变成新包）、全局 Nexus 登录
 - 诊断：Conan、配置、仓库、平台
 
 侧边栏是同一套命令的窄入口。密码只在设置页录入，通过 `CONAN_PASSWORD` 传给 CLI。

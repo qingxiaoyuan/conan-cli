@@ -19,10 +19,14 @@ func (a *App) Status(ctx context.Context) (Report, error) {
 	}
 	project, projectErr := a.Project()
 	initialized := projectErr == nil
-	conanfile := ""
-	if _, err := osStatConanfile(a.Dir); err == nil {
-		conanfile = "present"
+	nameGuess := manifest.DetectPackageName(a.Dir)
+	if initialized && applyPackageIdentity(a.Dir, project) {
+		if saveErr := config.SaveProject(a.Dir, project); saveErr == nil {
+			project, projectErr = a.Project()
+			initialized = projectErr == nil
+		}
 	}
+	conanfile := ""
 	if manifest.HasConanfile(a.Dir) {
 		if fileExists(a.Dir, "conanfile.py") {
 			conanfile = "conanfile.py"
@@ -48,14 +52,15 @@ func (a *App) Status(ctx context.Context) (Report, error) {
 	}
 
 	data := map[string]any{
-		"initialized": initialized,
-		"project":     project,
-		"global":      global.View(),
-		"scan":        scanResult,
-		"recipe":      recipe,
-		"conanfile":   conanfile,
-		"host":        scanResult.Host,
-		"machine":     map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH},
+		"initialized":  initialized,
+		"project":      project,
+		"global":       global.View(),
+		"scan":         scanResult,
+		"recipe":       recipe,
+		"conanfile":    conanfile,
+		"host":         scanResult.Host,
+		"machine":      map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH},
+		"package_name": nameGuess,
 	}
 	if projectErr != nil {
 		data["project_error"] = projectErr.Error()

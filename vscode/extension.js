@@ -1,13 +1,32 @@
 const vscode = require('vscode');
 const cp = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const cliArgs = require('./args');
 
 const output = vscode.window.createOutputChannel('Conan CLI');
 let dashboardPanel;
 let extensionPath = '';
 let connectionProbe;
-let connectionProbed = false;
+let connectionProbePromise;
+const refreshJobs = new WeakMap();
+const CONNECTION_TTL = 30 * 1000;
+
+// install / publish 会下载或上传大体积制品，动辄超过两分钟，用独立的
+// 长超时；其余命令保持 120 秒。两个阈值都可以在设置里调整。
+const LONG_RUNNING_ACTIONS = new Set(['install', 'publish']);
+
+function timeoutMsFor(args) {
+  const config = vscode.workspace.getConfiguration('conanCli');
+  const action = String(args[0] || '');
+  if (LONG_RUNNING_ACTIONS.has(action)) {
+    const minutes = Number(config.get('longCommandTimeoutMinutes', 30));
+    return Math.max(1, Number.isFinite(minutes) ? minutes : 30) * 60 * 1000;
+  }
+  const seconds = Number(config.get('commandTimeoutSeconds', 120));
+  return Math.max(1, Number.isFinite(seconds) ? seconds : 120) * 1000;
+}
 
 class SidebarProvider {
   constructor(extensionUri) {
@@ -48,6 +67,13 @@ function bundledBinary() {
   return path.join(extensionPath, 'bin', `${process.platform}-${process.arch}`, name);
 }
 
+function bundledPython() {
+  const root = path.join(extensionPath, 'runtime', `${process.platform}-${process.arch}`, 'python');
+  return process.platform === 'win32'
+    ? path.join(root, 'python.exe')
+    : path.join(root, 'bin', 'python3');
+}
+
 function executablePath(root) {
   const configured = String(vscode.workspace.getConfiguration('conanCli').get('binary', '') || '').trim();
   const useBundled = !configured || configured === 'conan-cli';
@@ -63,19 +89,52 @@ function executablePath(root) {
   return 'conan-cli';
 }
 
+function cliEnvironment(root, extra = {}) {
+  const env = { ...process.env, ...extra };
+  const configured = String(vscode.workspace.getConfiguration('conanCli').get('conanBinary', '') || '').trim();
+  if (configured) {
+    env.CONAN_BIN = configured.replace(/\$\{workspaceFolder\}/g, root || '');
+    return env;
+  }
+  const python = bundledPython();
+  if (python && fs.existsSync(python) && !env.CONAN_BIN && !env.CONAN_CLI_BUNDLED_PYTHON) {
+    env.CONAN_CLI_BUNDLED_PYTHON = python;
+    env.PATH = path.dirname(python) + path.delimiter + (env.PATH || '');
+    env.PYTHONNOUSERSITE = '1';
+  }
+  return env;
+}
+
 function runCli(root, args, environment = {}) {
   return new Promise((resolve) => {
     const command = executablePath(root);
     const fullArgs = ['--json', ...args];
     output.appendLine(`$ ${command} ${fullArgs.join(' ')}`);
-    const child = cp.spawn(command, fullArgs, { cwd: root, env: { ...process.env, ...environment }, windowsHide: true });
+    const child = cp.spawn(command, fullArgs, { cwd: root, env: cliEnvironment(root, environment), windowsHide: true });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const timeoutMs = timeoutMsFor(args);
+    const finish = (response) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(response);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({
+        ok: false,
+        action: args[0] || 'command',
+        error: `conan-cli 执行超时（${Math.round(timeoutMs / 1000)} 秒）。可在设置 conanCli.commandTimeoutSeconds / conanCli.longCommandTimeoutMinutes 中调整。`,
+        exit_code: 124,
+      });
+    }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
     child.on('error', (error) => {
       const missing = error && error.code === 'ENOENT';
-      resolve({
+      finish({
         ok: false,
         action: args[0] || 'command',
         error: missing
@@ -85,13 +144,14 @@ function runCli(root, args, environment = {}) {
       });
     });
     child.on('close', (code) => {
+      if (settled) return;
       if (stderr.trim()) output.appendLine(stderr.trimEnd());
       let response;
       try { response = JSON.parse(stdout); }
       catch (_) { response = { ok: false, action: args[0] || 'command', error: stdout.trim() || stderr.trim() || `conan-cli 退出码 ${code}`, exit_code: code || 1 }; }
       if (response.message && !response.error && !response.ok) response.error = response.message;
       response.exit_code = response.exit_code ?? code ?? 0;
-      resolve(response);
+      finish(response);
     });
   });
 }
@@ -115,26 +175,40 @@ async function addDependency(root) {
 }
 
 async function probeConnection(root, panel) {
-  if (connectionProbed) {
+  const key = root;
+  if (connectionProbe && connectionProbe.key === key && Date.now() - connectionProbe.checkedAt < CONNECTION_TTL) {
     if (panel && connectionProbe) panel.webview.postMessage({ type: 'probe', probe: connectionProbe });
     return connectionProbe;
   }
-  connectionProbed = true;
-  if (panel) panel.webview.postMessage({ type: 'busy', label: '正在检查仓库连接…' });
-  const response = await runCli(root, ['config', 'test']);
-  connectionProbe = {
-    ok: !!response.ok,
-    message: response.ok ? (response.message || '仓库可达') : (response.error || response.message || '连接失败'),
-  };
-  if (panel) {
-    panel.webview.postMessage({ type: 'probe', probe: connectionProbe });
-    panel.webview.postMessage({ type: 'busy', label: '' });
+  if (connectionProbePromise) {
+    const result = await connectionProbePromise;
+    if (panel) panel.webview.postMessage({ type: 'probe', probe: result });
+    return result;
   }
-  return connectionProbe;
+  if (panel) panel.webview.postMessage({ type: 'busy', label: '正在检查仓库连接…' });
+  connectionProbePromise = runCli(root, ['config', 'test']).then((response) => {
+    connectionProbe = {
+      key,
+      checkedAt: Date.now(),
+      ok: !!response.ok,
+      message: response.ok ? (response.message || '仓库可达') : (response.error || response.message || '连接失败'),
+    };
+    return connectionProbe;
+  }).finally(() => { connectionProbePromise = undefined; });
+  try {
+    const result = await connectionProbePromise;
+    if (panel) panel.webview.postMessage({ type: 'probe', probe: result });
+    return result;
+  } finally {
+    if (panel) panel.webview.postMessage({ type: 'busy', label: '' });
+  }
 }
 
 async function refreshState(panel, root, extra = {}) {
   if (!panel) return;
+  const existing = refreshJobs.get(panel);
+  if (existing) return existing;
+  const job = (async () => {
   panel.webview.postMessage({ type: 'busy', label: '正在刷新…' });
   const [status, doctor, analyze] = await Promise.all([
     runCli(root, ['status']),
@@ -147,10 +221,18 @@ async function refreshState(panel, root, extra = {}) {
     status: status.data || {},
     doctor,
     analyze: analyze.data || {},
+    analyzeResponse: analyze,
     raw,
     ...(connectionProbe ? { probe: connectionProbe } : {}),
     ...extra,
   });
+  })();
+  refreshJobs.set(panel, job);
+  try {
+    return await job;
+  } finally {
+    if (refreshJobs.get(panel) === job) refreshJobs.delete(panel);
+  }
 }
 
 async function handleWebviewMessage(panel, root, message) {
@@ -211,11 +293,11 @@ async function handleWebviewMessage(panel, root, message) {
       break;
     case 'analyze':
       busy('正在分析依赖…');
-      await execute(root, analyzeArgs(message), '分析完成。');
+      await execute(root, cliArgs.analyzeArgs(message), '分析完成。');
       break;
     case 'install':
       busy('正在拉取 Conan 依赖…');
-      await execute(root, installArgs(message), 'Conan 依赖已拉取。');
+      await execute(root, cliArgs.installArgs(message), 'Conan 依赖已拉取。');
       break;
     case 'catalog': {
       busy('正在查询仓库…');
@@ -245,31 +327,31 @@ async function handleWebviewMessage(panel, root, message) {
       busy('正在保存全局设置…');
       const env = {};
       if (payload.password) env.CONAN_PASSWORD = payload.password;
-      await execute(root, configSetArgs(payload), '全局设置已保存。', env);
+      await execute(root, cliArgs.configSetArgs(payload), '全局设置已保存。', env);
       if (payload.password || env.CONAN_PASSWORD) await execute(root, ['config', 'login'], '已登录远程仓库。', env);
-      connectionProbed = false;
+      connectionProbe = undefined;
       await probeConnection(root, panel);
       break;
     }
     case 'test':
       busy('正在测试连接…');
-      connectionProbed = false;
+      connectionProbe = undefined;
       const probe = await probeConnection(root, panel);
       if (probe && probe.ok) vscode.window.showInformationMessage(probe.message || '仓库可达。');
       else vscode.window.showErrorMessage((probe && probe.message) || '仓库连接失败。');
       break;
     case 'save-project':
       busy('正在保存项目设置…');
-      await execute(root, settingsSetArgs(message.payload || {}), '项目设置已保存。');
+      await execute(root, cliArgs.settingsSetArgs(message.payload || {}), '项目设置已保存。');
       break;
     case 'save-project-quiet': {
-      const args = settingsSetArgs(message.payload || {});
+      const args = cliArgs.settingsSetArgs(message.payload || {});
       if (args.length > 2) await runCli(root, args);
       return;
     }
     case 'publish':
       busy('正在更新配方并发布…');
-      await execute(root, publishArgs(message.payload || {}), '已更新 conanfile.py 并发布。');
+      await execute(root, cliArgs.publishArgs(message.payload || {}), '已更新 conanfile.py 并发布。');
       break;
     default:
       break;
@@ -277,67 +359,15 @@ async function handleWebviewMessage(panel, root, message) {
   await refreshState(panel, root);
 }
 
-function analyzeArgs(message) {
-  const args = ['analyze'];
-  if (message.os) args.push('--os', message.os);
-  if (message.arch) args.push('--arch', message.arch);
-  if (message.buildType) args.push('--build-type', String(message.buildType));
-  return args;
-}
-
-function installArgs(message) {
-  const args = ['install'];
-  if (message.os) args.push('--os', message.os);
-  if (message.arch) args.push('--arch', message.arch);
-  if (message.buildType) args.push('--build-type', String(message.buildType));
-  if (message.outputFolder) args.push('--output-folder', String(message.outputFolder));
-  return args;
-}
-
-function configSetArgs(payload) {
-  const args = ['config', 'set'];
-  args.push('--name', payload.name || 'nexus');
-  if (payload.url) args.push('--url', payload.url);
-  if (payload.username) args.push('--username', payload.username);
-  return args;
-}
-
-function settingsSetArgs(payload) {
-  const args = ['settings', 'set'];
-  const map = {
-    name: '--name', qt: '--qt', compiler: '--compiler', compilerVersion: '--compiler-version',
-    os: '--os', arch: '--arch', buildType: '--build-type',
-    publishOs: '--publish-os', publishArch: '--publish-arch', publishBuildType: '--publish-build-type',
-    channel: '--channel', outputFolder: '--output-folder',
-  };
-  for (const [key, flag] of Object.entries(map)) {
-    if (payload[key]) args.push(flag, String(payload[key]));
-  }
-  return args;
-}
-
-function publishArgs(payload) {
-  const args = ['publish'];
-  if (payload.name) args.push('--name', payload.name);
-  if (payload.version) args.push('--version', payload.version);
-  if (payload.channel) args.push('--channel', payload.channel);
-  if (payload.os) args.push('--os', payload.os);
-  if (payload.arch) args.push('--arch', payload.arch);
-  if (payload.buildType) args.push('--build-type', payload.buildType);
-  if (payload.compiler) args.push('--compiler', payload.compiler);
-  if (payload.compilerVersion) args.push('--compiler-version', payload.compilerVersion);
-  if (payload.qt) args.push('--qt', payload.qt);
-  if (payload.note) args.push('--note', payload.note);
-  return args;
-}
-
 function loadWebview(file, webview) {
   const fs = require('fs');
-  const nonce = String(Date.now());
+  const nonce = crypto.randomBytes(16).toString('hex');
   return fs.readFileSync(path.join(__dirname, file), 'utf8').replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
 }
 
 function openDashboard(root, view) {
+  root = workspaceRoot();
+  if (!root) return;
   if (dashboardPanel) {
     dashboardPanel.reveal(vscode.ViewColumn.One);
     refreshState(dashboardPanel, root).then(async () => {
@@ -348,7 +378,10 @@ function openDashboard(root, view) {
   }
   dashboardPanel = vscode.window.createWebviewPanel('conanCli.dashboard', 'Conan 控制台', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
   dashboardPanel.webview.html = loadWebview('dashboard.html', dashboardPanel.webview);
-  dashboardPanel.webview.onDidReceiveMessage((message) => handleWebviewMessage(dashboardPanel, root, message));
+  dashboardPanel.webview.onDidReceiveMessage((message) => {
+    const currentRoot = requireWorkspace();
+    if (currentRoot) handleWebviewMessage(dashboardPanel, currentRoot, message);
+  });
   dashboardPanel.onDidDispose(() => { dashboardPanel = undefined; });
   refreshState(dashboardPanel, root).then(async () => {
     await probeConnection(root, dashboardPanel);
@@ -361,8 +394,19 @@ function activate(context) {
   try {
     const bundled = bundledBinary();
     if (bundled && fs.existsSync(bundled) && process.platform !== 'win32') fs.chmodSync(bundled, 0o755);
+    const python = bundledPython();
+    if (python && fs.existsSync(python) && process.platform !== 'win32') fs.chmodSync(python, 0o755);
   } catch (_) { /* ignore */ }
   const sidebar = new SidebarProvider(context.extensionUri);
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    connectionProbe = undefined;
+    connectionProbePromise = undefined;
+    const root = workspaceRoot();
+    if (root) {
+      sidebar.refresh(root);
+      if (dashboardPanel) refreshState(dashboardPanel, root);
+    }
+  }));
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('conanCli.actions', sidebar, {
     webviewOptions: { retainContextWhenHidden: true },
   }));

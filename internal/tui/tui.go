@@ -633,19 +633,17 @@ func (ui *dashboard) searchDependencies(ctx context.Context, reader *bufio.Reade
 
 func (ui *dashboard) settingsScreen(ctx context.Context, reader *bufio.Reader) {
 	ui.refreshProject()
-	global := ui.global
-	if global == nil {
-		global = &config.Global{}
+	scope := &settingsScope{global: ui.global, project: ui.project}
+	if scope.global == nil {
+		scope.global = &config.Global{}
 	}
-	project := ui.project
-	if project == nil {
-		project = config.NewProject(ui.app.Dir)
+	if scope.project == nil {
+		scope.project = config.NewProject(ui.app.Dir)
 	}
 	active := "global"
-	pendingPassword := ""
 
 	for {
-		ui.renderSettings(active, global, project, pendingPassword != "")
+		ui.renderSettings(active, scope)
 		choice, ok := ui.command(reader, "设置操作 [g 全局 / p 项目 / s 保存 / t 测试 / l 保存并登录 / q 返回] > ")
 		if !ok || choice == "q" || choice == "" {
 			return
@@ -656,46 +654,42 @@ func (ui *dashboard) settingsScreen(ctx context.Context, reader *bufio.Reader) {
 		case "p", "project":
 			active = "project"
 		case "tab":
-			if active == "global" {
-				active = "project"
-			} else {
-				active = "global"
-			}
+			active = toggleSettingsTab(active)
 		case "s", "save":
 			if active == "global" {
-				report, err := ui.saveGlobal(ctx, global, pendingPassword)
+				report, err := ui.saveGlobal(ctx, scope.global, scope.pendingPassword)
 				ui.storeReport(report, err)
 				if err == nil {
-					pendingPassword = ""
+					scope.pendingPassword = ""
 				}
 			} else {
-				report, err := ui.saveProject(project)
+				report, err := ui.saveProject(scope.project)
 				ui.storeReport(report, err)
 			}
 			ui.refreshProject()
 			if ui.global != nil {
-				global = ui.global
+				scope.global = ui.global
 			}
 			if ui.project != nil {
-				project = ui.project
+				scope.project = ui.project
 			}
 		case "l", "login":
 			if active != "global" {
 				ui.lastMessage = "请切换到全局设置后执行保存并登录"
 				continue
 			}
-			report, err := ui.saveGlobal(ctx, global, pendingPassword)
+			report, err := ui.saveGlobal(ctx, scope.global, scope.pendingPassword)
 			ui.storeReport(report, err)
 			if err == nil {
 				loginReport, loginErr := ui.app.ConfigLogin(ctx, "")
 				ui.storeReport(loginReport, loginErr)
 				if loginErr == nil {
-					pendingPassword = ""
+					scope.pendingPassword = ""
 				}
 			}
 			ui.refreshProject()
 			if ui.global != nil {
-				global = ui.global
+				scope.global = ui.global
 			}
 		case "t", "test":
 			if active == "global" {
@@ -704,109 +698,35 @@ func (ui *dashboard) settingsScreen(ctx context.Context, reader *bufio.Reader) {
 			} else {
 				ui.lastMessage = "仓库连接测试在全局设置中执行"
 			}
-		case "1", "name":
-			if active == "global" {
-				if value, ok := ui.askDefault(reader, "仓库名", global.Nexus.Name); ok {
-					global.Nexus.Name = value
-				}
-			} else if value, ok := ui.askDefault(reader, "项目名称", project.Name); ok {
-				project.Name = value
-			}
-		case "2", "url", "qt":
-			if active == "global" {
-				if value, ok := ui.askDefault(reader, "Nexus Conan URL", global.Nexus.URL); ok {
-					global.Nexus.URL = value
-				}
-			} else if value, ok := ui.askDefault(reader, "Qt 版本", project.QtVersion); ok {
-				project.QtVersion = value
-			}
-		case "3", "user", "compiler":
-			if active == "global" {
-				if value, ok := ui.askDefault(reader, "登录用户名", global.Nexus.Username); ok {
-					global.Nexus.Username = value
-				}
-			} else if value, ok := ui.askDefault(reader, "编译器 gcc / clang / msvc", project.Compiler.ID); ok {
-				project.Compiler.ID = value
-			}
-		case "4", "password", "compiler-version":
-			if active == "global" {
-				if value, ok := ui.askDefault(reader, "密码 / Token（留空保留已保存密码）", ""); ok && value != "" {
-					pendingPassword = value
-				}
-			} else if value, ok := ui.askDefault(reader, "编译器版本", project.Compiler.Version); ok {
-				project.Compiler.Version = value
-			}
-		case "5", "os", "conan-bin":
-			if active == "global" {
-				if value, ok := ui.askDefault(reader, "Conan 可执行文件路径", global.ConanBin); ok {
-					global.ConanBin = value
-				}
-			} else {
-				if value, ok := ui.askDefault(reader, "使用平台操作系统", project.Platform.Consume.OS); ok {
-					project.Platform.Consume.OS = config.NormalizeOS(value)
-				}
-			}
-		case "6", "arch":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "使用平台架构", project.Platform.Consume.Arch); ok {
-					project.Platform.Consume.Arch = config.NormalizeArch(value)
-				}
-			}
-		case "7", "build-type":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "使用构建类型 Debug / Release", project.Platform.Consume.BuildType); ok {
-					project.Platform.Consume.BuildType = config.NormalizeBuildType(value)
-				}
-			}
-		case "8", "publish-os":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "发布平台操作系统", project.Platform.Publish.OS); ok {
-					project.Platform.Publish.OS = config.NormalizeOS(value)
-				}
-			}
-		case "9", "publish-arch":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "发布平台架构", project.Platform.Publish.Arch); ok {
-					project.Platform.Publish.Arch = config.NormalizeArch(value)
-				}
-			}
-		case "10", "publish-build-type":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "发布构建类型 Debug / Release", project.Platform.Publish.BuildType); ok {
-					project.Platform.Publish.BuildType = config.NormalizeBuildType(value)
-				}
-			}
-		case "11", "channel":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "channel", project.Channel); ok {
-					project.Channel = value
-				}
-			}
-		case "12", "remote":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "项目远程仓库名", project.Remote); ok {
-					project.Remote = value
-				}
-			}
-		case "13", "build":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "构建系统 cmake / qmake / unknown", project.BuildSystem); ok {
-					project.BuildSystem = value
-				}
-			}
-		case "14", "output":
-			if active == "project" {
-				if value, ok := ui.askDefault(reader, "输出目录", project.OutputFolder); ok {
-					project.OutputFolder = value
-				}
-			}
 		default:
-			ui.lastMessage = "请先选择 g 全局或 p 项目，再输入字段编号"
+			fields := settingsFieldsFor(active)
+			if index, matched := matchSettingsField(choice, fields); matched {
+				ui.editSettingsFieldLine(reader, fields[index], scope)
+			} else {
+				ui.lastMessage = "请先选择 g 全局或 p 项目，再输入字段编号"
+			}
 		}
 	}
 }
 
-func (ui *dashboard) renderSettings(active string, global *config.Global, project *config.Project, pendingPassword bool) {
+// editSettingsFieldLine asks for a new value and stores it through the shared
+// field table (with kind-specific normalization).
+func (ui *dashboard) editSettingsFieldLine(reader *bufio.Reader, field settingsField, scope *settingsScope) {
+	defaultValue := ""
+	if field.kind != fieldSecret {
+		defaultValue = field.get(scope)
+	}
+	value, ok := ui.askDefault(reader, field.editHint, defaultValue)
+	if !ok {
+		return
+	}
+	if field.kind == fieldSecret && value == "" {
+		return
+	}
+	field.apply(scope, value)
+}
+
+func (ui *dashboard) renderSettings(active string, scope *settingsScope) {
 	title := "项目"
 	if active == "global" {
 		title = "全局"
@@ -815,34 +735,20 @@ func (ui *dashboard) renderSettings(active string, global *config.Global, projec
 	ui.boxRow("  当前页：" + ui.paint("g 全局", ternary(active == "global", "32", "0")) + " / " + ui.paint("p 项目", ternary(active == "project", "32", "0")))
 	ui.boxSeparator("├", "┤")
 	if active == "global" {
-		view := global.View()
 		ui.boxRow("  全局设置（保存在本机，不进入项目 git）")
-		ui.boxRow("  1 仓库名       " + fallback(global.Nexus.Name, "nexus"))
-		ui.boxRow("  2 URL          " + fallback(clip(global.Nexus.URL, 53), "未配置"))
-		ui.boxRow("  3 用户         " + fallback(global.Nexus.Username, "未配置"))
-		passwordState := "未保存"
-		if view.HasPassword || pendingPassword {
-			passwordState = "********（密码不进项目）"
-		}
-		ui.boxRow("  4 密码 / Token  " + passwordState)
-		ui.boxRow("  5 Conan 路径    " + fallback(global.ConanBin, "PATH 中的 conan"))
-		ui.boxRow("  s 保存   t 测试连接   l 保存并登录")
 	} else {
 		ui.boxRow("  项目设置（写入 .conan-cli/project.yaml）")
-		ui.boxRow("  1 项目名称      " + fallback(project.Name, "-"))
-		ui.boxRow("  2 Qt 版本       " + fallback(project.QtVersion, "未设置"))
-		ui.boxRow("  3 编译器        " + fallback(project.Compiler.ID, "未设置"))
-		ui.boxRow("  4 编译器版本    " + fallback(project.Compiler.Version, "未设置"))
-		ui.boxRow("  5 使用系统      " + fallback(config.DisplayOS(project.Platform.Consume.OS), "未选择"))
-		ui.boxRow("  6 使用架构      " + fallback(project.Platform.Consume.Arch, "未选择"))
-		ui.boxRow("  7 使用构建      " + fallback(config.DisplayBuildType(project.Platform.Consume.BuildType), "Release"))
-		ui.boxRow("  8 发布系统      " + fallback(config.DisplayOS(project.Platform.Publish.OS), "未选择"))
-		ui.boxRow("  9 发布架构      " + fallback(project.Platform.Publish.Arch, "未选择"))
-		ui.boxRow(" 10 发布构建      " + fallback(config.DisplayBuildType(project.Platform.Publish.BuildType), "Release"))
-		ui.boxRow(" 11 channel       " + fallback(project.Channel, "dev"))
-		ui.boxRow(" 12 远程仓库      " + fallback(project.Remote, "跟随全局"))
-		ui.boxRow(" 13 构建系统      " + fallback(project.BuildSystem, "unknown"))
-		ui.boxRow(" 14 输出目录      " + fallback(project.OutputFolder, "lib"))
+	}
+	for index, field := range settingsFieldsFor(active) {
+		row := fmt.Sprintf("  %2d %s%s", index+1, padCell(field.label, 13), field.displayValue(scope))
+		if field.note != "" {
+			row += field.note
+		}
+		ui.boxRow(row)
+	}
+	if active == "global" {
+		ui.boxRow("  s 保存   t 测试连接   l 保存并登录")
+	} else {
 		ui.boxRow("  缺二进制策略    download-only（固定）")
 		ui.boxRow("  s 保存项目设置")
 	}
@@ -879,17 +785,15 @@ func (ui *dashboard) publishScreen(ctx context.Context, reader *bufio.Reader) {
 		return
 	}
 
-	name, version := "", ""
+	name, version := ui.project.Name, ""
 	if metadata, _, err := ui.app.Client.Inspect(ctx); err == nil {
-		name = stringValue(metadata["name"])
+		if name == "" {
+			name = stringValue(metadata["name"])
+		}
 		version = stringValue(metadata["version"])
 	}
 	project := ui.project
-	name, ok := ui.askDefault(reader, "包名（会写入 conanfile.py）", name)
-	if !ok {
-		return
-	}
-	version, ok = ui.askDefault(reader, "版本（会写入 conanfile.py）", version)
+	version, ok := ui.askDefault(reader, "版本（会写入 conanfile.py）", version)
 	if !ok {
 		return
 	}

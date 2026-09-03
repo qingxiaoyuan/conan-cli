@@ -16,12 +16,11 @@ func (a *App) Catalog(ctx context.Context, query string) (Report, error) {
 	if global == nil {
 		global = &config.Global{}
 	}
-	remote := global.Nexus.Name
-	if remote == "" {
-		if project, err := a.Project(); err == nil {
-			remote = project.Remote
-		}
+	var project *config.Project
+	if loaded, err := a.Project(); err == nil {
+		project = loaded
 	}
+	remote := resolveRemote("", project)
 
 	packages, source, err := a.loadCatalog(ctx, global, remote, query)
 	if err != nil {

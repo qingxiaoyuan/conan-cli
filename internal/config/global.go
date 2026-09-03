@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"conan-cli/internal/atomicfile"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -82,7 +84,7 @@ func SaveGlobal(global *Global) error {
 	if err := os.MkdirAll(HomeDir(), 0o700); err != nil {
 		return fmt.Errorf("create global config directory: %w", err)
 	}
-	return writeAtomic(GlobalPath(), data, 0o600)
+	return atomicfile.Write(GlobalPath(), data, 0o600)
 }
 
 func LoadPassword() (string, error) {
@@ -105,7 +107,7 @@ func SavePassword(password string) error {
 		_ = os.Remove(CredentialsPath())
 		return nil
 	}
-	return writeAtomic(CredentialsPath(), []byte(password+"\n"), 0o600)
+	return atomicfile.Write(CredentialsPath(), []byte(password+"\n"), 0o600)
 }
 
 func (g *Global) View() GlobalView {

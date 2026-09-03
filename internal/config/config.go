@@ -7,10 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"conan-cli/internal/atomicfile"
+
 	"gopkg.in/yaml.v3"
 )
 
-const ProjectConfigPath = ".conan-cli/project.yaml"
+const (
+	ProjectConfigPath   = ".conan-cli/project.yaml"
+	DefaultOutputFolder = "conan"
+)
 
 type Compiler struct {
 	ID      string `yaml:"id,omitempty" json:"id,omitempty"`
@@ -68,6 +73,7 @@ type Platform struct {
 
 type Project struct {
 	Name                string   `yaml:"name" json:"name"`
+	NameLocked          bool     `yaml:"name_locked,omitempty" json:"name_locked,omitempty"`
 	BuildSystem         string   `yaml:"build_system" json:"build_system"`
 	DefaultProfile      string   `yaml:"default_profile,omitempty" json:"default_profile,omitempty"`
 	QtVersion           string   `yaml:"qt_version,omitempty" json:"qt_version,omitempty"`
@@ -120,37 +126,10 @@ func SaveProject(dir string, project *Project) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create project config directory: %w", err)
 	}
-	if err := writeAtomic(path, data, 0o644); err != nil {
+	if err := atomicfile.Write(path, data, 0o644); err != nil {
 		return fmt.Errorf("write project config: %w", err)
 	}
 	return nil
-}
-
-func writeAtomic(path string, data []byte, mode os.FileMode) error {
-	directory := filepath.Dir(path)
-	temporary, err := os.CreateTemp(directory, ".project.yaml.*")
-	if err != nil {
-		return err
-	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-
-	if err := temporary.Chmod(mode); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(data); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporaryName, path)
 }
 
 func NewProject(dir string) *Project {
@@ -235,7 +214,7 @@ func applyDefaults(project *Project, fallbackName string) {
 		project.MissingBinaryPolicy = "download-only"
 	}
 	if project.OutputFolder == "" {
-		project.OutputFolder = "lib"
+		project.OutputFolder = DefaultOutputFolder
 	}
 	project.Platform.Consume.OS = NormalizeOS(project.Platform.Consume.OS)
 	project.Platform.Consume.Arch = NormalizeArch(project.Platform.Consume.Arch)

@@ -2,3 +2,9 @@
 .gitignore
 *.vsix
 node_modules/**
+**/*.tar.gz
+**/*.tar.gz.partial
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+**/*.test.js

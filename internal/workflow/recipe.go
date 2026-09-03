@@ -3,6 +3,7 @@ package workflow
 import (
 	"strings"
 
+	"conan-cli/internal/config"
 	"conan-cli/internal/manifest"
 )
 
@@ -10,6 +11,15 @@ func (a *App) GenerateRecipe(kind string, force bool, name, version, qt string) 
 	project, err := a.ensureProject()
 	if err != nil {
 		return Report{}, err
+	}
+	if applyPackageIdentity(a.Dir, project) {
+		_ = config.SaveProject(a.Dir, project)
+	}
+	name = strings.TrimSpace(name)
+	if name != "" && name != project.Name {
+		project.Name = name
+		project.NameLocked = true
+		_ = config.SaveProject(a.Dir, project)
 	}
 	input := manifest.GenerateInput{
 		Kind:        manifest.RecipeKind(strings.TrimSpace(kind)),

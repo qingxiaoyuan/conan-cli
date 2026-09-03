@@ -30,7 +30,7 @@ func TestGenerateConsumeAndPublish(t *testing.T) {
 	}
 	data, _ = os.ReadFile(path)
 	text = string(data)
-	if !strings.Contains(text, "kind: publish") || !strings.Contains(text, `"qt_version"`) || !strings.Contains(text, pythonClass("qtutils")+"Conan") || !strings.Contains(text, "CMAKE_BUILD_TYPE") || !strings.Contains(text, "CONFIG+=%s") {
+	if !strings.Contains(text, "kind: publish") || !strings.Contains(text, `"qt_version"`) || !strings.Contains(text, pythonClass("qtutils")+"Conan") || !strings.Contains(text, "def export_sources") || !strings.Contains(text, "未找到已编译的库") || !strings.Contains(text, "def build(self):\n        pass") {
 		t.Fatalf("publish recipe = %s", text)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "conanfile.txt")); !os.IsNotExist(err) {

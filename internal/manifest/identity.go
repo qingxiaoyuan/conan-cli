@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"conan-cli/internal/atomicfile"
 )
 
 type PublishIdentity struct {
@@ -22,9 +24,9 @@ type IdentityResult struct {
 
 func (r IdentityResult) Hint() string {
 	if r.Action == "generate" {
-		return "确认发布后会生成或改写 conanfile.py 发布配方，再打包上传"
+		return "确认发布后会生成发布配方，并打包本机已编译的库（不会再编译）"
 	}
-	return "确认发布后会先把包名和版本写入 conanfile.py，再打包上传"
+	return "确认发布后会先更新 conanfile.py，再打包本机已编译的库（不会再编译）"
 }
 
 func PlanPublishIdentity(dir string) IdentityResult {
@@ -33,7 +35,8 @@ func PlanPublishIdentity(dir string) IdentityResult {
 	if _, err := os.Stat(py); err != nil {
 		return result
 	}
-	if GeneratedKind(dir) == RecipeConsume {
+	switch GeneratedKind(dir) {
+	case RecipeConsume, RecipePublish:
 		return result
 	}
 	result.Action = "patch"
@@ -94,7 +97,7 @@ func patchPublishIdentity(path string, ident PublishIdentity) error {
 	if updated == string(data) {
 		return nil
 	}
-	if err := writeAtomic(path, []byte(updated), 0o644); err != nil {
+	if err := atomicfile.Write(path, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("write conanfile.py: %w", err)
 	}
 	return nil

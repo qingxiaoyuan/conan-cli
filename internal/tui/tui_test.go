@@ -108,6 +108,98 @@ func TestCursorMenuFitsCursorPanel(t *testing.T) {
 	}
 }
 
+func TestSettingsFieldTableDrivesBothPages(t *testing.T) {
+	if count := settingsFieldCount("global"); count != 5 {
+		t.Fatalf("global field count = %d, want 5", count)
+	}
+	if count := settingsFieldCount("project"); count != 14 {
+		t.Fatalf("project field count = %d, want 14", count)
+	}
+	global := settingsFieldsFor("global")
+	if index, ok := matchSettingsField("3", global); !ok || global[index].label != "用户" {
+		t.Fatalf("global choice 3 resolved to %d, %v", index, ok)
+	}
+	if _, ok := matchSettingsField("qt", global); ok {
+		t.Fatal("qt alias must not match on the global page")
+	}
+	project := settingsFieldsFor("project")
+	if index, ok := matchSettingsField("qt", project); !ok || project[index].label != "Qt 版本" {
+		t.Fatalf("project alias qt resolved to %d, %v", index, ok)
+	}
+}
+
+func TestSettingsFieldApplyNormalizesValues(t *testing.T) {
+	scope := &settingsScope{project: config.NewProject(t.TempDir())}
+	fields := settingsFieldsFor("project")
+	_, indexOS := matchSettingsFieldIndex(t, "os", fields)
+	fields[indexOS].apply(scope, "麒麟")
+	if scope.project.Platform.Consume.OS != config.OSKylin {
+		t.Fatalf("os = %q, want kylin", scope.project.Platform.Consume.OS)
+	}
+	_, indexArch := matchSettingsFieldIndex(t, "arch", fields)
+	fields[indexArch].apply(scope, "amd64")
+	if scope.project.Platform.Consume.Arch != config.ArchX64 {
+		t.Fatalf("arch = %q, want x64", scope.project.Platform.Consume.Arch)
+	}
+	_, indexBT := matchSettingsFieldIndex(t, "build-type", fields)
+	fields[indexBT].apply(scope, "release-mode")
+	if scope.project.Platform.Consume.BuildType != config.BuildTypeRelease {
+		t.Fatalf("build_type = %q, want Release", scope.project.Platform.Consume.BuildType)
+	}
+}
+
+func matchSettingsFieldIndex(t *testing.T, alias string, fields []settingsField) (settingsField, int) {
+	t.Helper()
+	index, ok := matchSettingsField(alias, fields)
+	if !ok {
+		t.Fatalf("alias %q not found", alias)
+	}
+	return fields[index], index
+}
+
+func TestSettingsScreenLineModeEditsAndSaves(t *testing.T) {
+	t.Setenv("CONAN_CLI_HOME", t.TempDir())
+	dir := t.TempDir()
+	app := workflow.New(dir)
+	var output bytes.Buffer
+	ui := newUI(app, &output, false)
+	ui.refreshProject()
+
+	input := "p\n2\n6.8\n3\ngcc\n5\nkylin\ns\nq\n"
+	ui.settingsScreen(context.Background(), bufioReader(input))
+
+	project, err := app.Project()
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if project.QtVersion != "6.8" || project.Compiler.ID != "gcc" {
+		t.Fatalf("project = qt %q compiler %q", project.QtVersion, project.Compiler.ID)
+	}
+	if got := project.Platform.Consume.OS; got != config.OSKylin {
+		t.Fatalf("consume os = %q, want kylin", got)
+	}
+	if !strings.Contains(output.String(), "设置 · 项目") {
+		t.Fatalf("settings screen did not render project page:\n%s", output.String())
+	}
+}
+
+func TestCursorSettingsEditOSViaChoicePage(t *testing.T) {
+	t.Setenv("CONAN_CLI_HOME", t.TempDir())
+	ui := newUI(workflow.New(t.TempDir()), &bytes.Buffer{}, false)
+	ui.refreshProject()
+	// 按下方向键（选中 Linux），再按 Enter 确认。
+	controller := &cursorController{ui: ui, keys: newKeyReader(strings.NewReader("\x1b[B\r"))}
+	state := &settingsCursorState{
+		active:   "project",
+		selected: 4, // 使用系统
+		scope:    settingsScope{project: config.NewProject(t.TempDir())},
+	}
+	controller.editSettingField(state)
+	if got := state.scope.project.Platform.Consume.OS; got != config.OSLinux {
+		t.Fatalf("consume os = %q, want linux", got)
+	}
+}
+
 // bufioReader keeps the interaction test focused on the TUI without making
 // the production input API expose a concrete reader type.
 func bufioReader(input string) *bufio.Reader {

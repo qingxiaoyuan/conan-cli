@@ -39,12 +39,7 @@ func (a *App) Analyze(ctx context.Context, osName, arch, buildType string) (Repo
 	}
 	targetMissing := missingTarget(spec)
 	settings := platform.Resolve(spec, project.Compiler, project.QtVersion)
-	remote := project.Remote
-	if remote == "" {
-		if global, globalErr := config.LoadGlobal(); globalErr == nil && global.Nexus.URL != "" {
-			remote = global.Nexus.Name
-		}
-	}
+	remote := resolveRemote("", project)
 
 	recipeDeps := []string{}
 	recipeErr := ""
@@ -120,12 +115,9 @@ func (a *App) lookupBinary(ctx context.Context, reference, remote string, settin
 	}
 	data, _, err := a.Client.List(ctx, query, remote)
 	if err != nil {
-		if !conan.ListHasReference(data, reference) && data == nil {
-			return "unknown", "查询仓库失败: " + err.Error()
-		}
-		if !conan.ListHasReference(data, reference) {
-			return "missing_package", "仓库中没有该包或版本"
-		}
+		// RunJSON never populates data when the command or JSON parsing
+		// fails, so every error means the remote could not be queried.
+		return "unknown", "查询仓库失败: " + err.Error()
 	}
 	if data == nil || !conan.ListHasReference(data, reference) {
 		nameOnly := strings.SplitN(reference, "/", 2)[0]

@@ -43,6 +43,9 @@ func TestNewProjectDetectsQmake(t *testing.T) {
 	if project.MissingBinaryPolicy != "download-only" {
 		t.Fatalf("MissingBinaryPolicy = %q, want download-only", project.MissingBinaryPolicy)
 	}
+	if project.OutputFolder != DefaultOutputFolder {
+		t.Fatalf("OutputFolder = %q, want %q", project.OutputFolder, DefaultOutputFolder)
+	}
 }
 
 func TestSaveLoadProjectAndAddDependency(t *testing.T) {

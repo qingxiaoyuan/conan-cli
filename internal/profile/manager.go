@@ -13,7 +13,3 @@ type Manager struct {
 func (m Manager) List(ctx context.Context) (conan.Result, error) {
 	return m.Client.Profiles(ctx)
 }
-
-func (m Manager) Detect(ctx context.Context) (conan.Result, error) {
-	return m.Client.DetectProfile(ctx)
-}
