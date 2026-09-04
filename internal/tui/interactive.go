@@ -1114,7 +1114,7 @@ func (ui *dashboard) renderCursorPublish(form publishCursorForm, selected int) {
 	ui.boxRow("  登录在全局设置完成 · 方向键移动，Enter 编辑 / 选择")
 	ui.boxSeparator("├", "┤")
 	rows := []string{
-		"包名        " + fallback(form.name, "未识别") + "（改名请到项目设置）",
+		"包名        " + fallback(form.name, "未识别"),
 		"版本        " + fallback(form.version, "未填写（inspect 失败时必填）"),
 		"channel     " + fallback(form.channel, "dev"),
 		"发布系统    " + fallback(config.DisplayOS(form.os), "未选择"),
@@ -1135,7 +1135,9 @@ func (controller *cursorController) publishEnter(ctx context.Context, form *publ
 	if selected < 8 {
 		switch selected {
 		case 0:
-			// 包名是项目身份，发布表单只展示，改名走项目设置
+			if value, ok := controller.editText("发布表单", "Conan 包名", form.name, false); ok {
+				form.name = value
+			}
 		case 1:
 			if value, ok := controller.editText("发布表单", "版本", form.version, false); ok {
 				form.version = value
@@ -1182,7 +1184,11 @@ func (controller *cursorController) publishEnter(ctx context.Context, form *publ
 		controller.showResult("发布预览", report, err)
 		return true
 	}
-	request := workflow.PublishRequest{Name: form.name, Version: form.version, Channel: form.channel, Remote: form.remote, OS: form.os, Arch: form.arch, BuildType: form.buildType, Note: form.note, DryRun: true}
+	pkg := controller.ui.project.PrimaryPackage()
+	request := workflow.PublishRequest{Name: form.name, Version: form.version, Package: form.name, Channel: form.channel, Remote: form.remote, OS: form.os, Arch: form.arch, BuildType: form.buildType, Note: form.note, DryRun: true, QtVersion: pkg.QtVersion, NoQt: pkg.NoQt}
+	if !pkg.NoQt && request.QtVersion == "" && controller.ui.project != nil {
+		request.QtVersion = controller.ui.project.QtVersion
+	}
 	preview, err := controller.ui.app.PublishPackage(ctx, request)
 	controller.ui.storeReport(preview, err)
 	if err != nil {

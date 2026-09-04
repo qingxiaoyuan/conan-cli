@@ -15,6 +15,8 @@ type PublishIdentity struct {
 	Version     string
 	QtVersion   string
 	BuildSystem string
+	LibDirs     []string
+	IncludeDirs []string
 }
 
 type IdentityResult struct {
@@ -23,23 +25,35 @@ type IdentityResult struct {
 }
 
 func (r IdentityResult) Hint() string {
-	if r.Action == "generate" {
-		return "确认发布后会生成发布配方，并打包本机已编译的库（不会再编译）"
+	// workspace 组件的配方就在其目录里，就地修改，不提 .conan-cli/recipes/。
+	inWorkspace := !strings.Contains(filepath.ToSlash(r.Path), ".conan-cli/recipes/")
+	switch r.Action {
+	case "generate", "update":
+		if inWorkspace {
+			return "确认发布后会就地更新该组件自带的发布配方，并打包本机已编译的库（不会再编译）"
+		}
+		return "确认发布后会写入该组件的发布配方（.conan-cli/recipes/<包名>/），不改仓库根的消费配方，并打包本机已编译的库（不会再编译）"
+	case "patch":
+		if inWorkspace {
+			return "确认发布后会就地更新该组件的手工发布配方，再打包本机已编译的库（不会再编译）"
+		}
+		return "确认发布后会更新该组件的手工发布配方，再打包本机已编译的库（不会再编译）"
+	default:
+		return "确认发布后会打包本机已编译的库（不会再编译）"
 	}
-	return "确认发布后会先更新 conanfile.py，再打包本机已编译的库（不会再编译）"
 }
 
-func PlanPublishIdentity(dir string) IdentityResult {
-	py := filepath.Join(dir, "conanfile.py")
+func PlanPublishIdentity(dir, name string) IdentityResult {
+	py := PublishRecipePath(dir, name)
 	result := IdentityResult{Path: py, Action: "generate"}
 	if _, err := os.Stat(py); err != nil {
 		return result
 	}
-	switch GeneratedKind(dir) {
-	case RecipeConsume, RecipePublish:
+	if GeneratedKindAt(py) == "" {
+		result.Action = "patch"
 		return result
 	}
-	result.Action = "patch"
+	result.Action = "update"
 	return result
 }
 
@@ -50,21 +64,60 @@ func ApplyPublishIdentity(dir string, ident PublishIdentity) (IdentityResult, er
 	if err := validateIdentity(ident.Name, ident.Version); err != nil {
 		return IdentityResult{}, err
 	}
-	planned := PlanPublishIdentity(dir)
-	if planned.Action == "generate" {
-		path, err := Generate(dir, GenerateInput{
-			Kind:        RecipePublish,
-			Name:        ident.Name,
-			Version:     ident.Version,
-			QtVersion:   ident.QtVersion,
-			BuildSystem: ident.BuildSystem,
-			Force:       true,
-		})
-		if err != nil {
+	planned := PlanPublishIdentity(dir, ident.Name)
+	if planned.Action == "patch" {
+		if err := patchPublishIdentity(planned.Path, ident); err != nil {
 			return IdentityResult{}, err
 		}
-		planned.Path = path
 		return planned, nil
+	}
+	path, err := Generate(dir, GenerateInput{
+		Kind:        RecipePublish,
+		Name:        ident.Name,
+		Version:     ident.Version,
+		QtVersion:   ident.QtVersion,
+		BuildSystem: ident.BuildSystem,
+		LibDirs:     ident.LibDirs,
+		IncludeDirs: ident.IncludeDirs,
+		Force:       true,
+	})
+	if err != nil {
+		return IdentityResult{}, err
+	}
+	planned.Path = path
+	if planned.Action == "" {
+		planned.Action = "generate"
+	}
+	return planned, nil
+}
+
+// PlanPublishIdentityIn plans the identity action for a workspace component
+// whose recipe lives inside dir (e.g. packages/<name>/conanfile.py) instead of
+// .conan-cli/recipes/<name>/. Existing recipes are only ever patched in place:
+// a hand-written recipe gets a "patch", a conan-cli generated one an "update".
+// Without a recipe the caller falls back to the isolated publish recipe flow.
+func PlanPublishIdentityIn(dir string) IdentityResult {
+	path := filepath.Join(dir, "conanfile.py")
+	result := IdentityResult{Path: path, Action: "patch"}
+	if GeneratedKindAt(path) != "" {
+		result.Action = "update"
+	}
+	return result
+}
+
+// ApplyPublishIdentityIn patches name/version/Qt into the recipe inside dir,
+// writing back in place (atomically). Used for workspace components that carry
+// their own conanfile.py; nothing is generated or moved.
+func ApplyPublishIdentityIn(dir string, ident PublishIdentity) (IdentityResult, error) {
+	ident.Name = strings.TrimSpace(ident.Name)
+	ident.Version = strings.TrimSpace(ident.Version)
+	ident.QtVersion = strings.TrimSpace(ident.QtVersion)
+	if err := validateIdentity(ident.Name, ident.Version); err != nil {
+		return IdentityResult{}, err
+	}
+	planned := PlanPublishIdentityIn(dir)
+	if _, err := os.Stat(planned.Path); err != nil {
+		return IdentityResult{}, fmt.Errorf("workspace 配方不存在: %s", planned.Path)
 	}
 	if err := patchPublishIdentity(planned.Path, ident); err != nil {
 		return IdentityResult{}, err

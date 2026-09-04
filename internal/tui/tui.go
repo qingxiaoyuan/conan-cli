@@ -772,7 +772,23 @@ func (ui *dashboard) saveProject(project *config.Project) (workflow.Report, erro
 		PublishBuildType: project.Platform.Publish.BuildType,
 		Channel:          project.Channel, Remote: project.Remote, BuildSystem: project.BuildSystem,
 		OutputFolder: project.OutputFolder,
+		LibDirs:      specLibDirs(project), HasLibDirs: len(project.Packages) > 0,
+		IncludeDirs: specIncludeDirs(project), HasIncludeDirs: len(project.Packages) > 0,
 	})
+}
+
+func specLibDirs(project *config.Project) []string {
+	if project == nil {
+		return nil
+	}
+	return project.PrimaryPackage().LibDirs
+}
+
+func specIncludeDirs(project *config.Project) []string {
+	if project == nil {
+		return nil
+	}
+	return project.PrimaryPackage().IncludeDirs
 }
 
 func (ui *dashboard) publishScreen(ctx context.Context, reader *bufio.Reader) {
@@ -793,9 +809,58 @@ func (ui *dashboard) publishScreen(ctx context.Context, reader *bufio.Reader) {
 		version = stringValue(metadata["version"])
 	}
 	project := ui.project
-	version, ok := ui.askDefault(reader, "版本（会写入 conanfile.py）", version)
+	pkgID := ""
+	listed := project.ListPackages()
+	if len(listed) > 1 {
+		var labels []string
+		for _, spec := range listed {
+			labels = append(labels, spec.Name)
+		}
+		ui.screen("发布表单")
+		ui.boxRow("  组件：" + strings.Join(labels, ", "))
+		ui.screenEnd()
+		var ok bool
+		pkgID, ok = ui.askDefault(reader, "发布哪个组件", listed[0].Name)
+		if !ok {
+			return
+		}
+	} else if len(listed) == 1 {
+		pkgID = listed[0].Name
+	}
+	if spec, _, ok := project.FindPackage(pkgID); ok {
+		if spec.Name != "" {
+			name = spec.Name
+		}
+		if spec.Version != "" {
+			version = spec.Version
+		}
+	}
+	var ok bool
+	name, ok = ui.askDefault(reader, "Conan 包名", name)
 	if !ok {
 		return
+	}
+	version, ok = ui.askDefault(reader, "版本（写入该组件发布配方）", version)
+	if !ok {
+		return
+	}
+	qtDefault := project.QtVersion
+	noQt := false
+	if spec, _, found := project.FindPackage(pkgID); found {
+		if spec.NoQt {
+			qtDefault = ""
+			noQt = true
+		} else if spec.QtVersion != "" {
+			qtDefault = spec.QtVersion
+		}
+	}
+	qt, ok := ui.askDefault(reader, "Qt 版本（不依赖 Qt 填 -）", qtDefault)
+	if !ok {
+		return
+	}
+	if qt == "-" || strings.EqualFold(qt, "none") || strings.TrimSpace(qt) == "" {
+		qt = ""
+		noQt = true
 	}
 	channel, ok := ui.askDefault(reader, "channel", project.Channel)
 	if !ok {
@@ -870,9 +935,9 @@ func (ui *dashboard) publishScreen(ctx context.Context, reader *bufio.Reader) {
 	}
 
 	request := workflow.PublishRequest{
-		Name: name, Version: version, Channel: channel, Remote: remote,
+		Name: name, Version: version, Channel: channel, Remote: remote, Package: pkgID,
 		OS: publishOS, Arch: publishArch, BuildType: publishBT, Note: note, DryRun: true,
-		Compiler: project.Compiler.ID, CompilerVersion: project.Compiler.Version, QtVersion: project.QtVersion,
+		Compiler: project.Compiler.ID, CompilerVersion: project.Compiler.Version, QtVersion: qt, NoQt: noQt,
 	}
 	preview, err := ui.app.PublishPackage(ctx, request)
 	ui.storeReport(preview, err)

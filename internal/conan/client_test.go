@@ -63,7 +63,7 @@ func TestExportPkg(t *testing.T) {
 	t.Setenv("GO_WANT_CONAN_HELPER_PROCESS", "1")
 	t.Setenv("GO_CONAN_HELPER_MODE", "export-pkg")
 	client := &Client{Binary: os.Args[0], Dir: t.TempDir()}
-	if _, err := client.ExportPkg(context.Background(), "default", "-s", "os=Linux"); err != nil {
+	if _, err := client.ExportPkg(context.Background(), ".conan-cli/recipes/demo", "default", "-s", "os=Linux"); err != nil {
 		t.Fatalf("ExportPkg returned error: %v", err)
 	}
 }

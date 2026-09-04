@@ -349,10 +349,13 @@ async function handleWebviewMessage(panel, root, message) {
       if (args.length > 2) await runCli(root, args);
       return;
     }
-    case 'publish':
-      busy('正在更新配方并发布…');
-      await execute(root, cliArgs.publishArgs(message.payload || {}), '已更新 conanfile.py 并发布。');
+    case 'publish': {
+      const isAll = !!(message.payload && message.payload.all);
+      busy(isAll ? '正在发布全部组件…' : '正在更新配方并发布…');
+      const response = await execute(root, cliArgs.publishArgs(message.payload || {}), isAll ? '组件发布完成。' : '已更新 conanfile.py 并发布。');
+      panel.webview.postMessage({ type: 'publish-result', response });
       break;
+    }
     default:
       break;
   }

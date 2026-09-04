@@ -26,6 +26,8 @@ type GenerateInput struct {
 	BuildSystem string
 	QtVersion   string
 	Requires    []string
+	LibDirs     []string
+	IncludeDirs []string
 	Force       bool
 }
 
@@ -34,7 +36,11 @@ func IsGenerated(dir string) bool {
 }
 
 func GeneratedKind(dir string) RecipeKind {
-	data, err := os.ReadFile(filepath.Join(dir, "conanfile.py"))
+	return GeneratedKindAt(filepath.Join(dir, "conanfile.py"))
+}
+
+func GeneratedKindAt(path string) RecipeKind {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
@@ -51,6 +57,16 @@ func GeneratedKind(dir string) RecipeKind {
 	return RecipeConsume
 }
 
+// PublishRecipeDir is <project>/.conan-cli/recipes/<name> so publish recipes
+// never overwrite the consume conanfile at the repository root.
+func PublishRecipeDir(projectDir, name string) string {
+	return filepath.Join(projectDir, ".conan-cli", "recipes", strings.TrimSpace(name))
+}
+
+func PublishRecipePath(projectDir, name string) string {
+	return filepath.Join(PublishRecipeDir(projectDir, name), "conanfile.py")
+}
+
 func Generate(dir string, input GenerateInput) (string, error) {
 	if input.Kind != RecipeConsume && input.Kind != RecipePublish {
 		return "", fmt.Errorf("unknown recipe kind %q", input.Kind)
@@ -61,6 +77,9 @@ func Generate(dir string, input GenerateInput) (string, error) {
 	if strings.TrimSpace(input.Version) == "" {
 		input.Version = "1.0"
 	}
+	if input.Kind == RecipePublish {
+		return generatePublish(dir, input)
+	}
 	pyPath := filepath.Join(dir, "conanfile.py")
 	if _, err := os.Stat(pyPath); err == nil && !input.Force {
 		if existing := GeneratedKind(dir); existing == "" {
@@ -69,18 +88,28 @@ func Generate(dir string, input GenerateInput) (string, error) {
 			return "", fmt.Errorf("已有%s配方，生成%s会覆盖。确认后可强制重新生成", kindLabel(existing), kindLabel(input.Kind))
 		}
 	}
-	var body string
-	if input.Kind == RecipePublish {
-		body = publishRecipe(input)
-	} else {
-		body = consumeRecipe(input)
-	}
-	if err := atomicfile.Write(pyPath, []byte(body), 0o644); err != nil {
+	if err := atomicfile.Write(pyPath, []byte(consumeRecipe(input)), 0o644); err != nil {
 		return "", fmt.Errorf("write conanfile.py: %w", err)
 	}
 	txtPath := filepath.Join(dir, "conanfile.txt")
 	if _, err := os.Stat(txtPath); err == nil {
 		_ = os.Remove(txtPath)
+	}
+	return pyPath, nil
+}
+
+func generatePublish(projectDir string, input GenerateInput) (string, error) {
+	pyPath := PublishRecipePath(projectDir, input.Name)
+	if err := os.MkdirAll(filepath.Dir(pyPath), 0o755); err != nil {
+		return "", fmt.Errorf("create publish recipe directory: %w", err)
+	}
+	if _, err := os.Stat(pyPath); err == nil && !input.Force {
+		if existing := GeneratedKindAt(pyPath); existing == "" {
+			return "", fmt.Errorf("已有手工发布配方 %s，不会覆盖。确认后可强制重新生成", pyPath)
+		}
+	}
+	if err := atomicfile.Write(pyPath, []byte(publishRecipe(input)), 0o644); err != nil {
+		return "", fmt.Errorf("write publish recipe: %w", err)
 	}
 	return pyPath, nil
 }
@@ -145,12 +174,34 @@ const consumeGenerateCMake = `    def generate(self):
         tc.generate()
 `
 
-func publishRecipe(input GenerateInput) string {
-	qt := strings.TrimSpace(input.QtVersion)
-	if qt == "" {
-		qt = "6.8"
+func pythonStringList(values []string) string {
+	if len(values) == 0 {
+		return "[]"
 	}
-	choices := qtOptionList(qt)
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, fmt.Sprintf("%q", filepath.ToSlash(value)))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func publishQtOptions(qt string) string {
+	if strings.TrimSpace(qt) == "" {
+		return `    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+    }
+    default_options = {"shared": True, "fPIC": True}`
+	}
+	return fmt.Sprintf(`    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+        "qt_version": [%s],
+    }
+    default_options = {"shared": True, "fPIC": True, "qt_version": %q}`, qtOptionList(qt), qt)
+}
+
+func publishRecipe(input GenerateInput) string {
 	return fmt.Sprintf(`# %s. Regenerating from the plugin will overwrite this file.
 # kind: publish
 # 预编译发布：请先用对应套件编好库，再点发布。不会在发布时调用 qmake/cmake。
@@ -163,19 +214,12 @@ class %sConan(ConanFile):
     name = %q
     version = %q
     settings = "os", "compiler", "build_type", "arch"
-    options = {
-        "shared": [True, False],
-        "fPIC": [True, False],
-        "qt_version": [%s],
-    }
-    default_options = {"shared": True, "fPIC": True, "qt_version": %q}
+%s
+    _lib_dirs = %s
+    _include_dirs = %s
 
     def export_sources(self):
-        copy(self, "*", src=self.recipe_folder, dst=self.export_sources_folder, excludes=[
-            "test_package", "test_package/*", ".git", ".git/*", ".conan-cli", ".conan-cli/*",
-            "build", "build/*", "example", "example/*",
-            "*.user", "*.stash", "Makefile", "Makefile.*", "*.o", "moc_*", "ui_*.h",
-        ])
+        pass
 
     def config_options(self):
         if self.settings.os == "Windows":
@@ -184,7 +228,15 @@ class %sConan(ConanFile):
     def build(self):
         pass
 
+    def _project_root(self):
+        return os.path.abspath(os.path.join(self.recipe_folder, "..", "..", ".."))
+
+    def _join_rel(self, root, rel):
+        return os.path.join(root, *rel.split("/"))
+
     def _lib_roots(self, root):
+        if self._lib_dirs:
+            return [self._join_rel(root, rel) for rel in self._lib_dirs]
         bt = str(self.settings.build_type)
         return [
             os.path.join(root, "lib", bt),
@@ -195,27 +247,31 @@ class %sConan(ConanFile):
         ]
 
     def package(self):
-        roots = [self.source_folder]
-        recipe = getattr(self, "recipe_folder", None)
-        if recipe and recipe not in roots:
-            roots.append(recipe)
+        root = self._project_root()
         dst_inc = os.path.join(self.package_folder, "include")
         dst_lib = os.path.join(self.package_folder, "lib")
         dst_bin = os.path.join(self.package_folder, "bin")
-        for root in roots:
+        searched = []
+        if self._include_dirs:
+            for rel in self._include_dirs:
+                inc = self._join_rel(root, rel)
+                if os.path.isdir(inc):
+                    copy(self, "*", inc, dst_inc, keep_path=True)
+        else:
             copy(self, "*.h", root, dst_inc, keep_path=True)
             copy(self, "*.hpp", root, dst_inc, keep_path=True)
             inc = os.path.join(root, "include")
             if os.path.isdir(inc):
                 copy(self, "*", inc, dst_inc, keep_path=True)
-            for libroot in self._lib_roots(root):
-                if not os.path.isdir(libroot):
-                    continue
-                copy(self, "*.so*", libroot, dst_lib, keep_path=False)
-                copy(self, "*.a", libroot, dst_lib, keep_path=False)
-                copy(self, "*.lib", libroot, dst_lib, keep_path=False)
-                copy(self, "*.dylib", libroot, dst_lib, keep_path=False)
-                copy(self, "*.dll", libroot, dst_bin, keep_path=False)
+        for libroot in self._lib_roots(root):
+            searched.append(libroot)
+            if not os.path.isdir(libroot):
+                continue
+            copy(self, "*.so*", libroot, dst_lib, keep_path=False)
+            copy(self, "*.a", libroot, dst_lib, keep_path=False)
+            copy(self, "*.lib", libroot, dst_lib, keep_path=False)
+            copy(self, "*.dylib", libroot, dst_lib, keep_path=False)
+            copy(self, "*.dll", libroot, dst_bin, keep_path=False)
         libdir = os.path.join(self.package_folder, "lib")
         bindir = os.path.join(self.package_folder, "bin")
         has_lib = False
@@ -223,7 +279,7 @@ class %sConan(ConanFile):
             if os.path.isdir(folder) and any(not name.startswith(".") for name in os.listdir(folder)):
                 has_lib = True
         if not has_lib:
-            raise Exception("未找到已编译的库（例如 lib/*.so、lib/*.a、lib/*.dll）。请先用发布页同一套系统/编译器/Qt/Debug|Release 在本机编好，再发布。")
+            raise Exception("未找到已编译的库。已查找：%%s。请先用发布页同一套系统/编译器/Qt/Debug|Release 在本机编好，再发布。" %% (", ".join(searched) if searched else "lib/, bin/"))
 
     def package_info(self):
         names = []
@@ -243,7 +299,7 @@ class %sConan(ConanFile):
                 if base and base not in names:
                     names.append(base)
         self.cpp_info.libs = names or [str(self.name)]
-`, generatedMarker, pythonClass(input.Name), input.Name, input.Version, choices, qt)
+`, generatedMarker, pythonClass(input.Name), input.Name, input.Version, publishQtOptions(input.QtVersion), pythonStringList(input.LibDirs), pythonStringList(input.IncludeDirs))
 }
 
 func qtOptionList(current string) string {

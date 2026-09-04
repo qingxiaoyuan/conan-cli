@@ -112,8 +112,8 @@ func TestSettingsFieldTableDrivesBothPages(t *testing.T) {
 	if count := settingsFieldCount("global"); count != 5 {
 		t.Fatalf("global field count = %d, want 5", count)
 	}
-	if count := settingsFieldCount("project"); count != 14 {
-		t.Fatalf("project field count = %d, want 14", count)
+	if count := settingsFieldCount("project"); count != 16 {
+		t.Fatalf("project field count = %d, want 16", count)
 	}
 	global := settingsFieldsFor("global")
 	if index, ok := matchSettingsField("3", global); !ok || global[index].label != "用户" {

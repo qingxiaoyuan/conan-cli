@@ -8,18 +8,24 @@ import (
 
 var prebuiltExt = []string{".so", ".a", ".lib", ".dll", ".dylib"}
 
-func HasPrebuiltLibraries(dir string) bool {
-	var roots []string
-	lib := filepath.Join(dir, "lib")
-	bin := filepath.Join(dir, "bin")
-	for _, root := range []string{lib, bin} {
-		roots = append(roots, root)
-		for _, sub := range []string{"Release", "Debug", "release", "debug"} {
-			roots = append(roots, filepath.Join(root, sub))
-		}
+// DefaultLibDirs is the root-relative layout used when the project does not
+// configure packages[].lib_dirs. Matches the historical lib/ + bin/ scan.
+func DefaultLibDirs() []string {
+	return []string{
+		"lib",
+		"lib/Release", "lib/Debug", "lib/release", "lib/debug",
+		"bin",
+		"bin/Release", "bin/Debug", "bin/release", "bin/debug",
 	}
-	for _, root := range roots {
-		if containsPrebuilt(root) {
+}
+
+func HasPrebuiltLibraries(dir string, libDirs ...[]string) bool {
+	dirs := DefaultLibDirs()
+	if len(libDirs) > 0 && len(libDirs[0]) > 0 {
+		dirs = libDirs[0]
+	}
+	for _, rel := range dirs {
+		if containsPrebuilt(filepath.Join(dir, filepath.FromSlash(rel))) {
 			return true
 		}
 	}

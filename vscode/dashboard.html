@@ -115,11 +115,15 @@
       background: transparent; color: var(--text); font-size: 12.5px;
     }
     .chip.on { background: var(--sel); border-color: var(--focus); color: var(--sel-fg, var(--text)); }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 99px; border: 1px solid var(--border); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+    tr.sel-row { background: var(--sel); }
+    tr.sel-row td { color: var(--sel-fg, var(--text)); }
     label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
-    input, select {
+    input:not([type=checkbox]):not([type=hidden]), select {
       width: 100%; height: 36px; padding: 0 12px; border-radius: 6px;
       background: var(--input-bg); border: 1px solid var(--input-border); color: var(--input-fg); outline: none;
     }
+    input[type=checkbox] { width: 14px; height: 14px; margin: 0; flex: none; accent-color: var(--focus); cursor: pointer; }
     input:focus, select:focus { border-color: var(--focus); }
     input::placeholder { color: var(--vscode-input-placeholderForeground, var(--muted)); }
     pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 11.5px; }
@@ -212,7 +216,7 @@
         <div class="field" style="max-width:360px">
           <label>拉取到目录</label>
           <input id="p-out" placeholder="conan">
-          <p class="hint">相对项目根目录，默认 conan。这里只放 install 生成的 pri/cmake，自己编的库仍在 lib/。</p>
+          <p class="hint">相对项目根目录，默认 conan。这里只放 install 生成的 pri/cmake，自己编的库在下面的产物目录。</p>
         </div>
         <div class="actions">
           <button class="btn" data-act="analyze">检查依赖</button>
@@ -256,16 +260,30 @@
       <section class="page" data-section="publish">
         <h2>发布包</h2>
         <p class="sub">请先用对应套件在本机编好库。点发布只打包已有头文件和二进制，不会再编译。系统/编译器/Qt/Debug|Release 写入包标识，拉取时必须一致。</p>
+        <div class="card flat" style="margin:0 0 16px">
+          <div class="head">组件清单<span class="hint" style="margin:0" id="pub-count"></span></div>
+          <table>
+            <thead><tr><th style="width:36px"></th><th>组件</th><th>来源</th><th>产物目录</th><th>状态</th><th style="width:64px"></th></tr></thead>
+            <tbody id="pub-list"></tbody>
+          </table>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px">
+            <span class="hint" style="margin:0" id="pub-all-hint"></span>
+            <button class="btn primary" id="pub-all" type="button">发布全部</button>
+          </div>
+        </div>
         <div style="max-width:640px">
           <div class="card" style="margin:0 0 16px">
             <div class="label" style="margin-bottom:8px">发布信息</div>
             <div class="row3" style="margin-top:0">
-              <div class="field" style="margin:0"><label>包名</label><div class="mono" id="pub-name" style="height:32px;display:flex;align-items:center;padding:0 10px;border:1px solid var(--input-border);border-radius:6px;background:var(--input-bg);opacity:.9"></div></div>
+              <div class="field" style="margin:0"><label>包名</label><input id="pub-name" placeholder="Conan 包名"></div>
               <div class="field" style="margin:0"><label>版本</label><input id="pub-version" placeholder="例如 1.0"></div>
               <div class="field" style="margin:0"><label>channel</label><input id="pub-channel" placeholder="dev"></div>
             </div>
             <p class="hint" id="pub-name-hint" style="margin-top:8px">包名按库的通行名自动识别，发布时不能改。改名请到设置（会变成仓库里的新包）。</p>
+            <label class="hint" style="margin-top:10px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pub-replace">替换旧版本（升级/降级后删除远程上的旧版本）<span class="detail" id="pub-replace-hint"></span></label>
             <div class="field" style="margin-top:12px;margin-bottom:0"><label>备注（可选）</label><input id="pub-note" placeholder="本次发布说明，可留空"></div>
+            <div class="field" style="margin-top:12px;margin-bottom:0"><label>产物目录</label><input id="pub-lib-dirs" placeholder="默认 lib/、bin/；例如 build/Release, src/mylib/lib"></div>
+            <div class="field" style="margin-top:12px;margin-bottom:0"><label>头文件目录</label><input id="pub-include-dirs" placeholder="默认 include/ 与源码树 *.h；例如 src/mylib"></div>
             <p class="hint" id="pub-recipe-hint" style="margin-top:10px"></p>
           </div>
           <div class="card" style="margin:0 0 16px">
@@ -277,7 +295,7 @@
             <div class="chips" id="pub-bt"></div>
           </div>
           <div class="row3">
-            <div class="field" style="margin:0"><label>Qt 版本</label><input id="pub-qt" placeholder="例如 6.8"></div>
+            <div class="field" style="margin:0"><label>Qt 版本</label><input id="pub-qt" placeholder="不依赖 Qt 可留空"><label class="hint" style="margin-top:6px;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pub-no-qt">此组件不依赖 Qt</label></div>
             <div class="field" style="margin:0"><label>编译器</label><input id="pub-compiler" placeholder="gcc / clang / msvc"></div>
             <div class="field" style="margin:0"><label>编译器版本</label><input id="pub-compiler-ver" placeholder="13"></div>
           </div>
@@ -296,7 +314,11 @@
         <div style="max-width:520px;margin-bottom:24px">
           <div class="field"><label>Conan 包名</label><input id="p-pkg-name" placeholder="例如 goodluckbutton"></div>
           <p class="hint" id="pkg-name-hint">按库通行名自动识别。只有探测错了或要换身份时才改。</p>
-          <div class="actions"><button class="btn" data-act="save-pkg-name">保存包名</button></div>
+          <div class="field"><label>产物目录</label><input id="p-lib-dirs" placeholder="默认 lib/、bin/；逗号分隔，相对项目根"></div>
+          <div class="field"><label>头文件目录</label><input id="p-include-dirs" placeholder="默认 include/；逗号分隔，相对项目根"></div>
+          <div class="field"><label>组件目录</label><input id="p-workspaces" placeholder="默认 packages/*、src/*；逗号分隔多个 glob，留空恢复默认"></div>
+          <p class="hint">在这些目录下自动发现可发布组件（含 conanfile.py、dist/ 或 lib/ 的子目录）。例如 packages/*, src/libs/*。</p>
+          <div class="actions"><button class="btn" data-act="save-pkg-name">保存包名与目录</button></div>
         </div>
         <h2>仓库登录</h2>
         <p class="sub">已保存的地址和用户名会显示在下面，不必每次重填。密码不会回显，已保存则留空。</p>
@@ -347,6 +369,10 @@
     const SKIP_CHECKS = { profiles:1, remotes:1, configured_remote:1, manifest_dependencies:1 };
     let state = {status:{}, doctor:{}, analyze:{}, catalog:{}};
     let osSel = '', archSel = '', btSel = '', pubOs = '', pubArch = '', pubBt = '', openPkg = '';
+    let pubSelected = '', publishing = false, loopActive = false, modalAction = null;
+    const pubChecked = new Set();
+    const pubProgress = {};
+    const pendingResolve = {};
     const $ = (id) => document.getElementById(id);
     const show = (view) => {
       if (view === 'overview') view = 'download';
@@ -373,10 +399,29 @@
     const persistMatch = () => {
       api.postMessage({type:'save-project-quiet', payload:{
         qt:$('p-qt').value.trim(), compiler:$('p-compiler').value.trim(), compilerVersion:$('p-compiler-ver').value.trim(),
-        os:osSel, arch:archSel, buildType: btSel || 'Release', outputFolder: outDir()
+        os:osSel, arch:archSel, buildType: btSel || 'Release', outputFolder: outDir(),
+        libDirs:$('p-lib-dirs').value.trim(), includeDirs:$('p-include-dirs').value.trim()
       }});
     };
     const project = () => (state.status && state.status.project) || {};
+    const primaryPackage = () => ((project().packages || [])[0] || {});
+    const joinDirs = (values) => (values || []).join(', ');
+    // 组件清单数据源：优先 status.packages（含 workspace 自动发现与产物探测）；
+    // 为空时退回 project.packages[] / 项目名，保持单组件项目的现有体验。
+    const packagesList = () => {
+      const fromStatus = (state.status && state.status.packages) || [];
+      if (fromStatus.length) return fromStatus;
+      const p = project();
+      const fallback = (name, spec) => ({
+        name, version: (spec && spec.version) || '', source: 'declared',
+        lib_dirs: (spec && spec.lib_dirs) || [], include_dirs: (spec && spec.include_dirs) || [],
+        no_qt: !!(spec && spec.no_qt), has_artifacts: false, has_recipe: false,
+      });
+      const specs = p.packages || [];
+      if (specs.length) return specs.map((s) => fallback(s.name, s));
+      if (p.name) return [fallback(p.name, null)];
+      return (((state.status && state.status.package_candidates) || [])).map((x) => fallback(x.name, null));
+    };
     const global = () => (state.status && state.status.global) || {nexus:{}};
     function depRow(r) {
       return `<tr class="${r.status==='found'||r.status==='unknown'?'':'warn-row'}"><td class="mono">${esc(r.reference)}</td><td class="${r.status==='found'?'ok':'warn'}">${esc(statusLabel(r.status))}</td><td class="detail">${esc(r.detail||'')}</td></tr>`;
@@ -414,26 +459,36 @@
       const recipe = (state.status && state.status.recipe) || {};
       const pkg = (state.status && state.status.package_name) || {};
       const pubName = p.name || pkg.name || '';
-      $('pub-name').textContent = pubName || '未识别';
+      const pkgs = packagesList().map((x) => x.name);
+      if (pubSelected && !pkgs.includes(pubSelected)) pubSelected = '';
+      pubSelected = pubSelected || pkgs[0] || '';
+      const currentPkg = pubSelected;
+      if (!$('pub-name').dataset.touched) $('pub-name').value = currentPkg || pubName || '';
       if (!$('p-pkg-name').dataset.touched) $('p-pkg-name').value = pubName;
       const srcHint = {qmake:'qmake TARGET', cmake:'CMake', include:'头文件目录', recipe:'已有配方', directory:'目录名'}[pkg.source] || pkg.source || '';
+      $('pub-name-hint').textContent = '发布页可改该组件包名。配方写到 .conan-cli/recipes/<包名>/，不会覆盖仓库根的消费配方。';
       if (pkg.name && srcHint && pkg.source !== 'directory') {
-        $('pub-name-hint').textContent = '已按' + srcHint + '识别为 ' + pubName + '。发布页不能改；改名请到设置。';
-        $('pkg-name-hint').textContent = '当前按' + srcHint + '识别。改名会变成仓库里的新包，旧引用失效。';
+        $('pkg-name-hint').textContent = '当前按' + srcHint + '识别。工程名与组件包名已分开；多组件请在发布页选择。';
       } else {
-        $('pub-name-hint').textContent = '包名按库的通行名自动识别，发布时不能改。改名请到设置（会变成仓库里的新包）。';
-        $('pkg-name-hint').textContent = '按库通行名自动识别。只有探测错了或要换身份时才改。';
+        $('pkg-name-hint').textContent = '工程名可与组件包名不同。多组件在项目 packages[] 里分别命名。';
       }
       if (!$('pub-version').dataset.touched) $('pub-version').value = recipe.version || '';
       if (!$('pub-channel').dataset.touched) $('pub-channel').value = p.channel || 'dev';
-      if (!$('pub-qt').dataset.touched) $('pub-qt').value = p.qt_version || '';
+      const selectedSpec = ((p.packages || []).find((x) => x.name === currentPkg)) || (packagesList().find((x) => x.name === currentPkg)) || {};
+      if (!$('pub-no-qt').dataset.touched) $('pub-no-qt').checked = !!selectedSpec.no_qt;
+      $('pub-qt').disabled = $('pub-no-qt').checked;
+      if (!$('pub-qt').dataset.touched) $('pub-qt').value = $('pub-no-qt').checked ? '' : (selectedSpec.qt_version || p.qt_version || '');
       if (!$('pub-compiler').dataset.touched) $('pub-compiler').value = (p.compiler && p.compiler.id) || '';
       if (!$('pub-compiler-ver').dataset.touched) $('pub-compiler-ver').value = (p.compiler && p.compiler.version) || '';
       const pubVer = $('pub-version').value.trim();
-      const pubReady = pubName && pubVer && pubOs && pubArch && $('pub-qt').value.trim() && $('pub-compiler').value.trim() && $('pub-compiler-ver').value.trim();
+      const liveName = $('pub-name').value.trim() || pubName;
+      const prevVer = (selectedSpec && selectedSpec.version) || '';
+      $('pub-replace-hint').textContent = ($('pub-replace').checked && prevVer && prevVer !== pubVer) ? '将删除 ' + liveName + '/' + prevVer : '';
+      const pubReady = liveName && pubVer && pubOs && pubArch && $('pub-compiler').value.trim() && $('pub-compiler-ver').value.trim();
+      const qtBit = $('pub-no-qt').checked ? '不依赖 Qt' : ($('pub-qt').value.trim() ? 'Qt ' + $('pub-qt').value.trim() : 'Qt 跟随项目');
       $('pub-meta').textContent = pubReady
-        ? (pubName + '/' + pubVer + ' · ' + displayOs(pubOs) + ' / ' + displayArch(pubArch) + ' · ' + (pubBt || 'Release') + ' · ' + $('pub-compiler').value.trim() + ' ' + $('pub-compiler-ver').value.trim() + ' · Qt ' + $('pub-qt').value.trim() + (g.has_password ? ' · 已登录' : ' · 未登录'))
-        : '请填完版本、发布平台、编译器和 Qt 版本';
+        ? (liveName + '/' + pubVer + ' · ' + displayOs(pubOs) + ' / ' + displayArch(pubArch) + ' · ' + (pubBt || 'Release') + ' · ' + $('pub-compiler').value.trim() + ' ' + $('pub-compiler-ver').value.trim() + ' · ' + qtBit + (g.has_password ? ' · 已登录' : ' · 未登录'))
+        : '请填完包名、版本、发布平台和编译器（Qt 可留空）';
       const hasPy = state.status && state.status.conanfile === 'conanfile.py';
       if (recipe.kind === 'consume') $('pub-recipe-hint').textContent = '当前是消费配方。点发布会改成发布配方，并打包本机已编译的库（不会再编译）。';
       else if (!hasPy) $('pub-recipe-hint').textContent = '还没有 conanfile.py。点发布会先生成发布配方，再打包本机 lib/ 里已有的库。';
@@ -454,6 +509,11 @@
       if (!$('p-compiler').dataset.touched) $('p-compiler').value = (p.compiler && p.compiler.id) || '';
       if (!$('p-compiler-ver').dataset.touched) $('p-compiler-ver').value = (p.compiler && p.compiler.version) || '';
       if (!$('p-out').dataset.touched) $('p-out').value = p.output_folder || 'conan';
+      if (!$('p-lib-dirs').dataset.touched) $('p-lib-dirs').value = joinDirs(primaryPackage().lib_dirs);
+      if (!$('p-include-dirs').dataset.touched) $('p-include-dirs').value = joinDirs(primaryPackage().include_dirs);
+      if (!$('p-workspaces').dataset.touched) $('p-workspaces').value = (p.workspaces || []).join(', ');
+      if (!$('pub-lib-dirs').dataset.touched) $('pub-lib-dirs').value = $('p-lib-dirs').value;
+      if (!$('pub-include-dirs').dataset.touched) $('pub-include-dirs').value = $('p-include-dirs').value;
       document.querySelectorAll('[data-act="install"]').forEach((b) => { b.disabled = !(osSel && archSel); });
       const recipeBtn = $('recipe-consume');
       if (recipeBtn) {
@@ -472,7 +532,137 @@
         return `<div class="check"><div class="check-icon ${c.ok?'ok':'fail'}">${c.ok?'✓':'!'}</div><div><div class="check-title">${esc(meta.title)}</div><div class="check-desc">${esc(c.ok ? meta.ok : meta.fail)}</div></div><div class="check-result">${esc(friendlyDetail(c.name, c.detail))}</div></div>`;
       }).join('') || '<div class="hint" style="padding:16px">还没有诊断结果。</div>';
       $('raw-out').textContent = state.raw || '';
+      renderPackages();
       renderCatalog();
+    }
+    function pkgRow(info) {
+      const prog = pubProgress[info.name];
+      let status;
+      if (prog && prog.state === 'running') status = '<span class="warn">发布中…</span>';
+      else if (prog && prog.state === 'ok') status = '<span class="ok">成功</span> <span class="mono detail">' + esc(prog.text) + '</span>';
+      else if (prog && prog.state === 'fail') status = '<span class="fail">失败：' + esc(prog.text) + '</span>';
+      else status = info.has_artifacts ? '<span class="ok">产物就绪</span>' : '<span class="warn">缺产物</span>';
+      const dirs = (info.lib_dirs && info.lib_dirs.length) ? info.lib_dirs.join(', ') : '默认 lib/、bin/';
+      const src = info.source === 'workspace' ? '自动发现' : '已登记';
+      const version = info.version ? '@' + info.version : '';
+      return `<tr data-name="${esc(info.name)}" class="${info.name===pubSelected?'sel-row':''}" style="cursor:pointer">`
+        + `<td><input type="checkbox" data-check="${esc(info.name)}" ${pubChecked.has(info.name)?'checked':''} ${publishing?'disabled':''}></td>`
+        + `<td class="mono">${esc(info.name)}${esc(version)}</td>`
+        + `<td><span class="tag">${src}</span></td>`
+        + `<td class="detail">${esc(dirs)}</td>`
+        + `<td>${status}</td>`
+        + `<td><button class="btn link" data-pub-one="${esc(info.name)}" ${publishing?'disabled':''}>发布</button></td>`
+        + '</tr>';
+    }
+    function renderPackages() {
+      const list = packagesList();
+      const names = list.map((x) => x.name);
+      [...pubChecked].forEach((n) => { if (!names.includes(n)) pubChecked.delete(n); });
+      Object.keys(pubProgress).forEach((n) => { if (!names.includes(n)) delete pubProgress[n]; });
+      $('pub-count').textContent = list.length
+        ? ('共 ' + list.length + ' 个组件' + (pubChecked.size ? '，已勾选 ' + pubChecked.size + ' 个' : ''))
+        : '';
+      $('pub-list').innerHTML = list.map(pkgRow).join('')
+        || '<tr><td colspan="6" class="detail">还没有可发布的组件，请在 packages/ 下放置组件或到设置里登记。</td></tr>';
+      $('pub-list').querySelectorAll('[data-check]').forEach((c) => {
+        c.onclick = (e) => e.stopPropagation();
+        c.onchange = () => {
+          if (c.checked) pubChecked.add(c.dataset.check); else pubChecked.delete(c.dataset.check);
+          renderPackages();
+        };
+      });
+      $('pub-list').querySelectorAll('[data-pub-one]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        if (publishing) return;
+        selectPackage(b.dataset.pubOne);
+        act('publish-preview');
+      });
+      $('pub-list').querySelectorAll('tr[data-name]').forEach((tr) => tr.onclick = () => {
+        if (publishing) return;
+        selectPackage(tr.dataset.name);
+      });
+      const allReady = pubOs && pubArch && $('pub-compiler').value.trim() && $('pub-compiler-ver').value.trim();
+      const allBtn = $('pub-all');
+      allBtn.disabled = publishing || !list.length || !allReady;
+      allBtn.textContent = pubChecked.size ? ('发布选中（' + pubChecked.size + '）') : '发布全部';
+      $('pub-all-hint').textContent = pubChecked.size
+        ? '将按下方表单的平台 / 编译器设置，逐个发布勾选的组件。'
+        : '不勾选时一次发布全部组件；勾选后逐个发布，逐行显示进度。';
+    }
+    function selectPackage(name) {
+      pubSelected = name;
+      const p = project();
+      const spec = ((p.packages || []).find((x) => x.name === name)) || {};
+      const info = (packagesList().find((x) => x.name === name)) || {};
+      $('pub-name').value = info.name || name;
+      delete $('pub-name').dataset.touched;
+      const ver = info.version || spec.version || '';
+      if (ver) { $('pub-version').value = ver; $('pub-version').dataset.touched = '1'; }
+      const libDirs = (info.lib_dirs && info.lib_dirs.length ? info.lib_dirs : spec.lib_dirs) || [];
+      if (libDirs.length) { $('pub-lib-dirs').value = joinDirs(libDirs); $('pub-lib-dirs').dataset.touched = '1'; }
+      const incDirs = (info.include_dirs && info.include_dirs.length ? info.include_dirs : spec.include_dirs) || [];
+      if (incDirs.length) { $('pub-include-dirs').value = joinDirs(incDirs); $('pub-include-dirs').dataset.touched = '1'; }
+      $('pub-no-qt').checked = !!(info.no_qt || spec.no_qt);
+      $('pub-qt').disabled = $('pub-no-qt').checked;
+      if ($('pub-no-qt').checked) { $('pub-qt').value = ''; $('pub-qt').dataset.touched = '1'; }
+      else if (spec.qt_version) { $('pub-qt').value = spec.qt_version; $('pub-qt').dataset.touched = '1'; }
+      render();
+    }
+    function publishAllPayload() {
+      return {
+        all: true,
+        os: pubOs, arch: pubArch, buildType: pubBt || 'Release',
+        compiler: $('pub-compiler').value.trim(), compilerVersion: $('pub-compiler-ver').value.trim(),
+        channel: $('pub-channel').value.trim() || 'dev', note: $('pub-note').value.trim(),
+        qt: $('pub-no-qt').checked ? '' : $('pub-qt').value.trim(),
+        replace: $('pub-replace').checked,
+      };
+    }
+    async function startPublishAll() {
+      const list = packagesList();
+      const checked = [...pubChecked].filter((n) => list.some((x) => x.name === n));
+      publishing = true;
+      if (!checked.length) {
+        list.forEach((x) => { pubProgress[x.name] = { state: 'running', text: '' }; });
+        renderPackages();
+        api.postMessage({ type: 'publish', payload: publishAllPayload() });
+        return;
+      }
+      loopActive = true;
+      for (const name of checked) {
+        const info = list.find((x) => x.name === name) || {};
+        pubProgress[name] = { state: 'running', text: '' };
+        renderPackages();
+        const payload = publishAllPayload();
+        delete payload.all;
+        payload.package = name;
+        payload.name = name;
+        if (info.version) payload.version = info.version;
+        api.postMessage({ type: 'publish', payload });
+        await new Promise((resolve) => { pendingResolve[name] = resolve; });
+      }
+      loopActive = false;
+      publishing = false;
+      renderPackages();
+    }
+    function handlePublishResult(resp) {
+      const data = (resp && resp.data) || {};
+      const okText = (ref, replaced) => (ref || '成功') + (replaced ? '（已删旧版 ' + replaced + '）' : '');
+      if (Array.isArray(data.results)) {
+        data.results.forEach((r) => {
+          if (!r || !r.package) return;
+          pubProgress[r.package] = r.ok
+            ? { state: 'ok', text: okText(r.reference, r.replaced) }
+            : { state: 'fail', text: r.error || (r.replace_warning || '失败') };
+        });
+      } else if (data.package) {
+        pubProgress[data.package] = resp.ok
+          ? { state: 'ok', text: okText(data.reference, data.replaced_reference) }
+          : { state: 'fail', text: resp.error || resp.message || '失败' };
+      }
+      Object.keys(pendingResolve).forEach((k) => { pendingResolve[k](); delete pendingResolve[k]; });
+      if (!loopActive) publishing = false;
+      renderPackages();
     }
     function renderCatalog() {
       const packages = (state.catalog && state.catalog.packages) || [];
@@ -517,20 +707,55 @@
     function esc(v){ return String(v??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
     document.querySelectorAll('[data-view]').forEach((b)=>b.addEventListener('click', () => show(b.dataset.view)));
     document.querySelectorAll('[data-act]').forEach((b)=>b.addEventListener('click', () => act(b.dataset.act)));
-    ['pub-version','pub-channel','pub-note','pub-qt','pub-compiler','pub-compiler-ver','g-url','g-user','g-pass','p-pkg-name'].forEach((id)=>$(id).addEventListener('input',()=>{ $(id).dataset.touched='1'; render(); }));
-    ['p-qt','p-compiler','p-compiler-ver','p-out'].forEach((id)=>$(id).addEventListener('change', () => { $(id).dataset.touched='1'; persistMatch(); }));
+    ['pub-version','pub-channel','pub-note','pub-qt','pub-compiler','pub-compiler-ver','g-url','g-user','g-pass','p-pkg-name','pub-lib-dirs','pub-include-dirs','pub-name'].forEach((id)=>$(id).addEventListener('input',()=>{ $(id).dataset.touched='1'; render(); }));
+    $('pub-no-qt').addEventListener('change', () => {
+      $('pub-no-qt').dataset.touched = '1';
+      $('pub-qt').disabled = $('pub-no-qt').checked;
+      if ($('pub-no-qt').checked) $('pub-qt').value = '';
+      render();
+    });
+    $('pub-replace').addEventListener('change', () => render());
+    ['p-qt','p-compiler','p-compiler-ver','p-out','p-lib-dirs','p-include-dirs'].forEach((id)=>$(id).addEventListener('change', () => { $(id).dataset.touched='1'; persistMatch(); }));
+    $('p-workspaces').addEventListener('input', () => { $('p-workspaces').dataset.touched = '1'; });
     $('cat-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') act('catalog'); });
-    $('modal-cancel').onclick=()=>$('modal').classList.remove('show');
-    $('modal-ok').onclick=()=>{ $('modal').classList.remove('show'); api.postMessage({type:'publish', payload: publishPayload()}); };
+    $('modal-cancel').onclick=()=>{ $('modal').classList.remove('show'); modalAction = null; };
+    $('modal-ok').onclick=()=>{
+      $('modal').classList.remove('show');
+      const run = modalAction;
+      modalAction = null;
+      if (run) run();
+    };
+    $('pub-all').onclick = () => {
+      if (publishing) return;
+      const list = packagesList();
+      if (!list.length) return;
+      const checked = [...pubChecked].filter((n) => list.some((x) => x.name === n));
+      const targets = checked.length ? checked : list.map((x) => x.name);
+      $('modal-text').textContent = (checked.length
+        ? '将按下方表单的平台设置逐个发布勾选的 ' + checked.length + ' 个组件：'
+        : '将按下方表单的平台设置一次发布全部 ' + list.length + ' 个组件：')
+        + targets.join('、')
+        + ' · ' + displayOs(pubOs) + ' / ' + displayArch(pubArch) + ' · ' + (pubBt || 'Release')
+        + ' · ' + $('pub-compiler').value.trim() + ' ' + $('pub-compiler-ver').value.trim()
+        + ($('pub-replace').checked ? ' · 发布后删除各组件的远程旧版本' : '');
+      modalAction = startPublishAll;
+      $('modal').classList.add('show');
+    };
     function publishPayload(){
       const p = (state.status && state.status.project) || {};
       const pkg = (state.status && state.status.package_name) || {};
       return {
         version:$('pub-version').value.trim(),
         channel:$('pub-channel').value.trim() || 'dev', note:$('pub-note').value.trim(),
-        os:pubOs, arch:pubArch, buildType: pubBt || 'Release', qt:$('pub-qt').value.trim(),
+        os:pubOs, arch:pubArch, buildType: pubBt || 'Release',         qt:$('pub-no-qt').checked ? '' : $('pub-qt').value.trim(),
+        noQt: $('pub-no-qt').checked,
         compiler:$('pub-compiler').value.trim(), compilerVersion:$('pub-compiler-ver').value.trim(),
-        _name: p.name || pkg.name || ''
+        libDirs: $('pub-lib-dirs').value.trim() || $('p-lib-dirs').value.trim(),
+        includeDirs: $('pub-include-dirs').value.trim() || $('p-include-dirs').value.trim(),
+        package: pubSelected,
+        name: $('pub-name').value.trim(),
+        replace: $('pub-replace').checked,
+        _name: $('pub-name').value.trim() || p.name || pkg.name || ''
       };
     }
     function act(name){
@@ -539,13 +764,19 @@
         const cur = ((state.status && state.status.project) || {}).name || '';
         if (!next) return;
         if (next !== cur && !window.confirm('改包名会变成仓库里的新包，旧引用全部失效。确定改成 ' + next + '？')) return;
-        api.postMessage({type:'save-project', payload:{name:next}});
+        api.postMessage({type:'save-project', payload:{name:next, libDirs:$('p-lib-dirs').value.trim(), includeDirs:$('p-include-dirs').value.trim(), workspaces:$('p-workspaces').value.trim()}});
         return;
       }
       if(name==='publish-preview'){
         const pld = publishPayload();
-        if (!(pld._name && pld.version && pld.os && pld.arch && pld.qt && pld.compiler && pld.compilerVersion)) return;
-        $('modal-text').textContent = '将打包本机已编译的 ' + pld._name + '/' + pld.version + '（不再编译）· ' + displayOs(pld.os) + ' / ' + displayArch(pld.arch) + ' · ' + (pld.buildType || 'Release') + ' · ' + pld.compiler + ' ' + pld.compilerVersion + ' · Qt ' + pld.qt;
+        if (!(pld._name && pld.version && pld.os && pld.arch && pld.compiler && pld.compilerVersion)) return;
+        $('modal-text').textContent = '将打包本机已编译的 ' + pld._name + '/' + pld.version + '（不再编译）· ' + displayOs(pld.os) + ' / ' + displayArch(pld.arch) + ' · ' + (pld.buildType || 'Release') + ' · ' + pld.compiler + ' ' + pld.compilerVersion + (pld.noQt ? ' · 不依赖 Qt' : (pld.qt ? ' · Qt ' + pld.qt : '')) + (pld.replace ? ' · 发布后删除远程旧版本' : '');
+        modalAction = () => {
+          publishing = true;
+          pubProgress[pubSelected] = { state: 'running', text: '' };
+          renderPackages();
+          api.postMessage({type:'publish', payload: publishPayload()});
+        };
         $('modal').classList.add('show');
         return;
       }
@@ -587,6 +818,7 @@
         return;
       }
       if (m.type === 'probe') { state.probe = m.probe || {}; render(); }
+      if (m.type === 'publish-result') { handlePublishResult(m.response || {}); }
       if (m.type === 'state') { state = Object.assign(state, m); $('busy').textContent = ''; render(); }
     });
     render();

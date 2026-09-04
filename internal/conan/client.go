@@ -220,8 +220,11 @@ func (c *Client) Inspect(ctx context.Context) (map[string]any, Result, error) {
 	return data, result, err
 }
 
-func (c *Client) ExportPkg(ctx context.Context, profile string, extra ...string) (Result, error) {
-	args := []string{"export-pkg", "."}
+func (c *Client) ExportPkg(ctx context.Context, recipe, profile string, extra ...string) (Result, error) {
+	if strings.TrimSpace(recipe) == "" {
+		recipe = "."
+	}
+	args := []string{"export-pkg", recipe}
 	if profile != "" {
 		args = append(args, "--profile:host="+profile)
 	}
@@ -231,6 +234,16 @@ func (c *Client) ExportPkg(ctx context.Context, profile string, extra ...string)
 
 func (c *Client) Upload(ctx context.Context, reference, remote string) (Result, error) {
 	args := []string{"upload", reference, "--confirm"}
+	if remote != "" {
+		args = append(args, "--remote="+remote)
+	}
+	return c.Run(ctx, args...)
+}
+
+// Remove deletes a reference (recipe and binaries) from the remote without
+// asking for confirmation.
+func (c *Client) Remove(ctx context.Context, reference, remote string) (Result, error) {
+	args := []string{"remove", reference, "--force"}
 	if remote != "" {
 		args = append(args, "--remote="+remote)
 	}

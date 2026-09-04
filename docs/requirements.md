@@ -214,6 +214,7 @@
 | F-SET-P07 | 构建系统 | qmake / cmake / unknown | P1 |
 | F-SET-P08 | 输出目录 | 默认 `conan` | P1 |
 | F-SET-P09 | 缺二进制策略 | 本阶段固定 `download-only`，界面只读说明 | P0 |
+| F-SET-P10 | 产物/头文件目录 | 发布打包用的相对项目根路径列表；未填时默认 `lib/`、`bin/` 与 `include/` | P0 |
 
 设置页保存即生效到对应配置文件；需要登录仓库的操作在保存后可自动或手动执行一次 login。VS Code 与终端 TUI 都必须能查看和修改上述全局/项目字段。
 

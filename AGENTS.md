@@ -50,14 +50,15 @@ go build -o bin/conan-cli ./cmd/conan-cli
 ```text
 cmd/conan-cli/main.go    命令分发、flag 解析、文本/JSON 输出切换
 internal/
-  workflow/              唯一业务层：init/status/scan/analyze/install/publish/settings/config/doctor。
+  workflow/              唯一业务层：init/status/scan/analyze/install/publish/settings/config/doctor/packages。
                          所有入口（CLI/TUI/VS Code）只调这里；新增业务能力先进 workflow
   conan/                 对 conan 二进制的封装（执行、list、配方解析）；Conan 命令调用只允许集中在这
   config/                .conan-cli/project.yaml 与 ~/.conan-cli/config.yaml 的读写（YAML）
   atomicfile/            原子写入（temp→sync→rename）；所有配置文件/conanfile 写入都必须走这里
   platform/              平台探测与「os+arch+compiler+Qt → Conan settings」映射
   scan/                  扫描本机 Qt 安装与编译器（只作参考，不自动写入项目）
-  manifest/              包标识、命名、预制包（prebuilt）相关逻辑
+  manifest/              包标识、命名、预制包（prebuilt）相关逻辑；workspace.go 做 npm workspaces
+                         风格组件发现（默认 packages/* 与 src/*，含 conanfile.py / dist/ / lib/ 即收录）
   nexus/                 远程仓库目录查询（catalog）
   output/                统一的 JSON/文本输出（output.Printer）
   profile/               Conan profile 管理
@@ -74,7 +75,7 @@ ui-design/               界面设计稿 HTML（参考用，不参与构建）
 
 ## 配置与数据文件
 
-- 项目配置：`<项目>/.conan-cli/project.yaml`（可提交 git）。
+- 项目配置：`<项目>/.conan-cli/project.yaml`（可提交 git）。`packages[]` 列出可发布组件（`name` / `version` / `lib_dirs` / `include_dirs`）；未填时发布仍把顶层 `name` 当作唯一组件，产物扫描仓库根 `lib/`、`bin/`。发布配方在 `.conan-cli/recipes/<包名>/`，不覆盖仓库根消费用 conanfile。`workspaces[]` 是组件发现 glob（默认 `packages/*` 与 `src/*`，可覆盖）：命中的目录自带 conanfile.py / dist/ / lib/ 即自动成为可发布组件，无需登记 `packages[]`；同名时 `packages[]` 优先。workspace 组件发布时直接在其目录 `export-pkg`、配方就地补丁，不写 `.conan-cli/recipes/`，也不回写 `packages[]`。`publish --all` 逐包发布全部组件（失败不中断，聚合在 `data.results`）。`publish --replace` 上传成功后删除远程旧版本（升降级时替换，删除失败仅告警不影响发布结果）。
 - 全局配置：`~/.conan-cli/config.yaml`；密码存 `~/.conan-cli/credentials`（权限 0600）。
 - 命令执行时以 `--dir <path>` 指定项目目录，默认当前目录。
 

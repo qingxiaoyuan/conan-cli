@@ -61,7 +61,7 @@ func TestPublishDryRunDoesNotRewriteRecipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := report.Data.(map[string]any)
-	if data["recipe_action"] != "patch" || data["version"] != "2.0" || data["reference"] != "demo/2.0" {
+	if data["recipe_action"] != "generate" || data["version"] != "2.0" || data["reference"] != "demo/2.0" {
 		t.Fatalf("preview data = %#v", data)
 	}
 	if data["channel"] != "dev" {
@@ -70,6 +70,115 @@ func TestPublishDryRunDoesNotRewriteRecipe(t *testing.T) {
 	got, _ := os.ReadFile(path)
 	if string(got) != original {
 		t.Fatal("dry-run rewrote conanfile.py")
+	}
+	dirs, _ := data["lib_dirs"].([]string)
+	if len(dirs) == 0 {
+		t.Fatalf("lib_dirs missing: %#v", data["lib_dirs"])
+	}
+}
+
+func TestPublishDryRunReportsCustomLibDirs(t *testing.T) {
+	dir := t.TempDir()
+	project := config.NewProject(dir)
+	project.Compiler = config.Compiler{ID: "gcc", Version: "13"}
+	project.QtVersion = "6.8"
+	project.Platform.Publish = config.PlatformSpec{OS: "linux", Arch: "x64"}
+	if err := config.SaveProject(dir, project); err != nil {
+		t.Fatal(err)
+	}
+	report, err := New(dir).PublishPackage(context.Background(), PublishRequest{
+		Name: "demo", Version: "1.0", OS: "linux", Arch: "x64",
+		Compiler: "gcc", CompilerVersion: "13", QtVersion: "6.8",
+		LibDirs: []string{"build/Release"}, DryRun: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := report.Data.(map[string]any)
+	dirs, _ := data["lib_dirs"].([]string)
+	if len(dirs) != 1 || dirs[0] != "build/Release" {
+		t.Fatalf("lib_dirs = %#v", data["lib_dirs"])
+	}
+}
+
+func TestPublishRejectsMissingCustomLibDir(t *testing.T) {
+	dir := t.TempDir()
+	project := config.NewProject(dir)
+	project.Compiler = config.Compiler{ID: "gcc", Version: "13"}
+	project.QtVersion = "6.8"
+	project.Platform.Publish = config.PlatformSpec{OS: "linux", Arch: "x64"}
+	project.Remote = "nexus"
+	if err := config.SaveProject(dir, project); err != nil {
+		t.Fatal(err)
+	}
+	_, err := New(dir).PublishPackage(context.Background(), PublishRequest{
+		Name: "demo", Version: "1.0", OS: "linux", Arch: "x64",
+		Compiler: "gcc", CompilerVersion: "13", QtVersion: "6.8",
+		LibDirs: []string{"build/Release"}, Remote: "nexus",
+	})
+	if err == nil || !strings.Contains(err.Error(), "build/Release") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSaveProjectSettingsPersistsLibDirs(t *testing.T) {
+	t.Setenv("CONAN_CLI_HOME", t.TempDir())
+	dir := t.TempDir()
+	app := New(dir)
+	if _, err := app.SaveProjectSettings(ProjectSettingsInput{
+		LibDirs: []string{"out/lib"}, IncludeDirs: []string{"src/foo"}, HasLibDirs: true, HasIncludeDirs: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	project, err := app.Project()
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := project.PrimaryPackage()
+	if len(spec.LibDirs) != 1 || spec.LibDirs[0] != "out/lib" || spec.IncludeDirs[0] != "src/foo" {
+		t.Fatalf("spec = %#v", spec)
+	}
+}
+
+func TestSaveProjectSettingsWorkspaces(t *testing.T) {
+	t.Setenv("CONAN_CLI_HOME", t.TempDir())
+	dir := t.TempDir()
+	app := New(dir)
+	if _, err := app.SaveProjectSettings(ProjectSettingsInput{
+		Workspaces: []string{"pkgs/*", "src/libs/*", "pkgs/*"}, HasWorkspaces: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	project, err := app.Project()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(project.Workspaces) != 2 || project.Workspaces[0] != "pkgs/*" || project.Workspaces[1] != "src/libs/*" {
+		t.Fatalf("workspaces = %#v", project.Workspaces)
+	}
+	// 未带 HasWorkspaces 的保存不应改动已有值
+	if _, err := app.SaveProjectSettings(ProjectSettingsInput{QtVersion: "6.8"}); err != nil {
+		t.Fatal(err)
+	}
+	if project, err = app.Project(); err != nil {
+		t.Fatal(err)
+	}
+	if len(project.Workspaces) != 2 {
+		t.Fatalf("workspaces after unrelated save = %#v", project.Workspaces)
+	}
+	// 空列表恢复默认（清空字段）
+	if _, err := app.SaveProjectSettings(ProjectSettingsInput{Workspaces: []string{""}, HasWorkspaces: true}); err != nil {
+		t.Fatal(err)
+	}
+	if project, err = app.Project(); err != nil {
+		t.Fatal(err)
+	}
+	if len(project.Workspaces) != 0 {
+		t.Fatalf("workspaces after reset = %#v", project.Workspaces)
+	}
+	// 非法 glob 报错
+	if _, err := app.SaveProjectSettings(ProjectSettingsInput{Workspaces: []string{"../escape/*"}, HasWorkspaces: true}); err == nil {
+		t.Fatal("expected error for escaping glob")
 	}
 }
 
@@ -110,9 +219,79 @@ func TestPublishWritesRecipeThenPackages(t *testing.T) {
 		t.Fatalf("report = %#v", report)
 	}
 	got, _ := os.ReadFile(path)
-	text := string(got)
-	if !strings.Contains(text, `version = "2.0"`) || !strings.Contains(text, `self.run("custom-build")`) {
-		t.Fatalf("expected version bump without rewriting build(), got %s", text)
+	if !strings.Contains(string(got), `version = "1.0"`) || !strings.Contains(string(got), `self.run("custom-build")`) {
+		t.Fatalf("root consume recipe was rewritten: %s", got)
+	}
+	isolated, err := os.ReadFile(filepath.Join(dir, ".conan-cli", "recipes", "demo", "conanfile.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(isolated), `version = "2.0"`) || !strings.Contains(string(isolated), "kind: publish") {
+		t.Fatalf("isolated recipe = %s", isolated)
+	}
+	saved, err := config.LoadProject(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec := saved.PrimaryPackage(); spec.Name != "demo" || spec.Version != "2.0" {
+		t.Fatalf("saved package = %#v", spec)
+	}
+}
+
+func TestPublishRequiresPackageWhenMultiple(t *testing.T) {
+	dir := t.TempDir()
+	project := config.NewProject(dir)
+	project.Compiler = config.Compiler{ID: "gcc", Version: "13"}
+	project.QtVersion = "6.8"
+	project.Platform.Publish = config.PlatformSpec{OS: "linux", Arch: "x64"}
+	project.Packages = []config.PackageSpec{{Name: "alpha"}, {Name: "beta"}}
+	if err := config.SaveProject(dir, project); err != nil {
+		t.Fatal(err)
+	}
+	_, err := New(dir).PublishPackage(context.Background(), PublishRequest{
+		Version: "1.0", OS: "linux", Arch: "x64",
+		Compiler: "gcc", CompilerVersion: "13", QtVersion: "6.8", DryRun: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--package") {
+		t.Fatalf("err = %v", err)
+	}
+	report, err := New(dir).PublishPackage(context.Background(), PublishRequest{
+		Package: "beta", Version: "1.0", OS: "linux", Arch: "x64",
+		Compiler: "gcc", CompilerVersion: "13", QtVersion: "6.8", DryRun: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := report.Data.(map[string]any)
+	if data["name"] != "beta" || data["package"] != "beta" {
+		t.Fatalf("data = %#v", data)
+	}
+}
+
+func TestPublishAllowsMissingQt(t *testing.T) {
+	dir := t.TempDir()
+	project := config.NewProject(dir)
+	project.Compiler = config.Compiler{ID: "gcc", Version: "13"}
+	project.QtVersion = "6.8"
+	project.Platform.Publish = config.PlatformSpec{OS: "linux", Arch: "x64"}
+	project.Packages = []config.PackageSpec{{Name: "plainlib", NoQt: true}}
+	if err := config.SaveProject(dir, project); err != nil {
+		t.Fatal(err)
+	}
+	report, err := New(dir).PublishPackage(context.Background(), PublishRequest{
+		Package: "plainlib", Version: "1.0", OS: "linux", Arch: "x64",
+		Compiler: "gcc", CompilerVersion: "13", NoQt: true, DryRun: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := report.Data.(map[string]any)
+	if data["qt_version"] != "" {
+		t.Fatalf("qt_version = %#v, want empty", data["qt_version"])
+	}
+	settings, _ := data["conan_settings"].(map[string]string)
+	if settings["qt_version"] != "" {
+		t.Fatalf("settings qt = %#v", settings)
 	}
 }
 

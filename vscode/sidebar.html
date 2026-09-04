@@ -114,8 +114,10 @@
       if (probe.ok === true) conn = '<span class="ok">仓库可达</span>';
       else if (probe.ok === false) conn = '<span class="warn">连接失败</span>';
       else if (g.has_password) conn = '<span class="ok">已登录</span>';
+      const pkgCount = ((last.status && last.status.packages) || []).length;
       $('facts').innerHTML = [
         ['目标平台', (plat.os||plat.arch) ? osName(plat.os)+' / '+archName(plat.arch)+' · '+(plat.build_type||'Release') : '未选'],
+        ['组件', pkgCount ? pkgCount + ' 个' : (p.name || '-')],
         ['仓库', nexus.url ? nexus.url.replace(/^https?:\/\//,'') : (g.has_password ? '已保存' : '未配置')],
         ['连接', conn]
       ].map(([k,v]) => `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`).join('');

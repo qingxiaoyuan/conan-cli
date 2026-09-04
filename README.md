@@ -11,7 +11,8 @@
 - `install --os/--arch --build-type` 只下载二进制（`--build=never`）；Debug 与 Release 是两套制品
 - `config` 管理本机 Nexus 地址和登录（密码不进 git）
 - `settings` 管理项目 Qt、编译器、使用/发布平台、channel
-- `publish` 支持表单字段和 `--dry-run` 预览；正式发布会先把包名/版本写入 `conanfile.py`，再 `export-pkg` 打包本机已编译的库并 upload
+- `publish` 支持表单字段和 `--dry-run` 预览。正式发布把该组件配方写到 `.conan-cli/recipes/<包名>/`，不改仓库根的消费配方，再 `export-pkg` 打包本机已编译库。多组件用 `--package`，或用 `--all` 逐包发布全部组件（单包失败不中断，结果聚合在 `data.results`）；产物路径用 `--lib-dir` / `packages[].lib_dirs`；`--replace` 在上传成功后删除远程上的旧版本（升降级场景）
+- `packages list` 列出全部可发布组件：`packages/*` 与 `src/*` 下自带 conanfile.py 或 dist/ 产物的目录自动成为组件（npm workspaces 风格，无需登记 packages[]），与 `packages[]` 合并展示；workspace 组件发布时直接在其目录就地补丁配方并 `export-pkg`
 - VS Code 控制台：概览、依赖分析、下载、发布、设置、诊断
 
 平台是 **操作系统 + 架构**：Windows / Linux / 麒麟 × x86 32 位 / x64 64 位 / ARM 32 位 / ARM 64 位。编译器和 Qt 是项目设置，查找时再组合。
@@ -38,7 +39,9 @@ conan-cli analyze --os kylin --arch x64
 conan-cli add fmt/10.2.1
 conan-cli install --os kylin --arch x64
 conan-cli publish --dry-run --os kylin --arch x64
-conan-cli publish --os kylin --arch x64 --channel dev
+  conan-cli publish --os kylin --arch x64 --channel dev --lib-dir build/Release
+conan-cli packages list
+conan-cli publish --all --dry-run --os kylin --arch x64
 conan-cli doctor
 ```
 
@@ -66,6 +69,9 @@ remote: nexus
 channel: dev
 missing_binary_policy: download-only
 output_folder: conan
+workspaces:        # 可选，组件发现 glob，默认 ["packages/*", "src/*"]
+  - packages/*
+  - src/*
 dependencies:
   - fmt/10.2.1
 ```

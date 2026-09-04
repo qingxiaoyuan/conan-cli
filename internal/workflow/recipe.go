@@ -21,6 +21,7 @@ func (a *App) GenerateRecipe(kind string, force bool, name, version, qt string) 
 		project.NameLocked = true
 		_ = config.SaveProject(a.Dir, project)
 	}
+	pkg := project.PrimaryPackage()
 	input := manifest.GenerateInput{
 		Kind:        manifest.RecipeKind(strings.TrimSpace(kind)),
 		Name:        firstNonEmpty(name, project.Name),
@@ -28,6 +29,8 @@ func (a *App) GenerateRecipe(kind string, force bool, name, version, qt string) 
 		BuildSystem: project.BuildSystem,
 		QtVersion:   firstNonEmpty(qt, project.QtVersion),
 		Requires:    project.Dependencies,
+		LibDirs:     pkg.LibDirs,
+		IncludeDirs: pkg.IncludeDirs,
 		Force:       force,
 	}
 	path, err := manifest.Generate(a.Dir, input)

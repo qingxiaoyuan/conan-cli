@@ -87,6 +87,8 @@ func run(args []string, out, errOut io.Writer) int {
 		report, err = runInstall(ctx, app, commandArgs)
 	case "publish":
 		report, err = runPublish(ctx, app, commandArgs)
+	case "packages":
+		report, err = runPackages(ctx, app, commandArgs)
 	case "recipe":
 		report, err = runRecipe(app, commandArgs)
 	case "doctor":
@@ -193,15 +195,31 @@ func runPublish(ctx context.Context, app *workflow.App, args []string) (workflow
 	compilerVersion := flags.String("compiler-version", "", "compiler major version")
 	qt := flags.String("qt", "", "Qt version, e.g. 6.8")
 	note := flags.String("note", "", "optional publish note")
+	pkg := flags.String("package", "", "component name when the project has multiple packages")
+	all := flags.Bool("all", false, "publish every component (workspaces and packages[])")
+	replace := flags.Bool("replace", false, "after uploading, delete the component's previous version from the remote")
+	noQt := flags.Bool("no-qt", false, "this component does not depend on Qt")
 	dryRun := flags.Bool("dry-run", false, "preview publish without uploading")
+	var libDirs csvList
+	var includeDirs csvList
+	flags.Var(&libDirs, "lib-dir", "prebuilt library directory relative to the project (repeatable)")
+	flags.Var(&includeDirs, "include-dir", "header directory relative to the project (repeatable)")
 	if err := flags.Parse(args); err != nil {
 		return workflow.Report{}, err
 	}
 	return app.PublishPackage(ctx, workflow.PublishRequest{
 		Name: *name, Version: *version, Ref: *reference, Channel: *channel,
 		Remote: *remote, OS: *osName, Arch: *arch, BuildType: *buildType, Compiler: *compiler, CompilerVersion: *compilerVersion,
-		QtVersion: *qt, Profile: *profile, Note: *note, DryRun: *dryRun,
+		QtVersion: *qt, Profile: *profile, Note: *note, DryRun: *dryRun, All: *all, NoQt: *noQt, Replace: *replace,
+		LibDirs: libDirs.values, IncludeDirs: includeDirs.values, Package: *pkg,
 	})
+}
+
+func runPackages(ctx context.Context, app *workflow.App, args []string) (workflow.Report, error) {
+	if len(args) != 1 || args[0] != "list" {
+		return workflow.Report{}, errors.New("usage: conan-cli packages list [--json]")
+	}
+	return app.PackagesList(ctx)
 }
 
 func runScan(ctx context.Context, app *workflow.App, args []string) (workflow.Report, error) {
@@ -267,6 +285,15 @@ func runSettings(app *workflow.App, args []string) (workflow.Report, error) {
 	remote := flags.String("remote", "", "remote name")
 	buildSystem := flags.String("build-system", "", "cmake|qmake|unknown")
 	outputFolder := flags.String("output-folder", "", "output folder")
+	pkg := flags.String("package", "", "component name")
+	version := flags.String("version", "", "component version")
+	noQt := flags.Bool("no-qt", false, "this component does not depend on Qt")
+	var libDirs csvList
+	var includeDirs csvList
+	var workspaces csvList
+	flags.Var(&libDirs, "lib-dir", "prebuilt library directory relative to the project (repeatable)")
+	flags.Var(&includeDirs, "include-dir", "header directory relative to the project (repeatable)")
+	flags.Var(&workspaces, "workspace", "component discovery glob relative to the project root, e.g. packages/* (repeatable; empty restores the default packages/* and src/*)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return workflow.Report{}, err
 	}
@@ -275,6 +302,10 @@ func runSettings(app *workflow.App, args []string) (workflow.Report, error) {
 	input.OS, input.Arch, input.BuildType = *osName, *arch, *buildType
 	input.PublishOS, input.PublishArch, input.PublishBuildType = *publishOS, *publishArch, *publishBuildType
 	input.Channel, input.Remote, input.BuildSystem, input.OutputFolder = *channel, *remote, *buildSystem, *outputFolder
+	input.LibDirs, input.HasLibDirs = libDirs.values, libDirs.set
+	input.IncludeDirs, input.HasIncludeDirs = includeDirs.values, includeDirs.set
+	input.Package, input.Version, input.NoQt = *pkg, *version, *noQt
+	input.Workspaces, input.HasWorkspaces = workspaces.values, workspaces.set
 	return app.SaveProjectSettings(input)
 }
 
@@ -344,6 +375,24 @@ func printTextReport(printer *output.Printer, report workflow.Report) {
 	}
 }
 
+type csvList struct {
+	values []string
+	set    bool
+}
+
+func (c *csvList) String() string { return strings.Join(c.values, ",") }
+
+func (c *csvList) Set(value string) error {
+	c.set = true
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			c.values = append(c.values, part)
+		}
+	}
+	return nil
+}
+
 func fail(printer *output.Printer, action string, err error) int {
 	printer.Error(action, err)
 	return 1
@@ -357,7 +406,7 @@ Usage:
   conan-cli status [--dir <path>] [--json]
   conan-cli scan [--apply] [--json]
   conan-cli analyze [--os windows|linux|kylin] [--arch x86|x64|arm|arm64] [--json]
-  conan-cli settings show|set [--qt 6.8] [--compiler gcc] [--compiler-version 11] [--os kylin] [--arch x64] [--json]
+  conan-cli settings show|set [--package NAME] [--version V] [--qt 6.8] [--compiler gcc] [--os kylin] [--arch x64] [--lib-dir DIR] [--include-dir DIR] [--workspace GLOB] [--json]
   conan-cli config show|set|login|test [--name nexus] [--url URL] [--username USER] [--json]
   conan-cli profile list [--json]
   conan-cli remote list|add|login [--json]
@@ -365,7 +414,8 @@ Usage:
   conan-cli search [package] [--json]
   conan-cli add <package>/<version> [--json]
   conan-cli install [--os kylin] [--arch x64] [--build-type Release] [--remote nexus] [--json]
-  conan-cli publish [--version v] [--os kylin] [--arch x64] [--build-type Release] [--channel dev] [--dry-run] [--json]
+  conan-cli publish [--package NAME|--all] [--version v] [--os kylin] [--arch x64] [--no-qt] [--lib-dir DIR] [--include-dir DIR] [--replace] [--dry-run] [--json]
+  conan-cli packages list [--json]
   conan-cli recipe generate --kind consume|publish [--force] [--name n] [--version v] [--qt 6.8] [--json]
   conan-cli doctor [--json]
   conan-cli tui [--dir <path>]

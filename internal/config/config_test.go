@@ -107,3 +107,69 @@ func TestLoadProjectRejectsUnsupportedMissingBinaryPolicy(t *testing.T) {
 		t.Fatal("LoadProject accepted unsupported missing_binary_policy")
 	}
 }
+
+func TestSaveLoadPackageArtifactDirs(t *testing.T) {
+	dir := t.TempDir()
+	project := NewProject(dir)
+	if err := project.SetPrimaryArtifactDirs([]string{"build/Release", "src/mylib/lib"}, []string{"src/mylib"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveProject(dir, project); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadProject(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := loaded.PrimaryPackage()
+	if len(spec.LibDirs) != 2 || spec.LibDirs[0] != "build/Release" || spec.LibDirs[1] != "src/mylib/lib" {
+		t.Fatalf("lib_dirs = %#v", spec.LibDirs)
+	}
+	if len(spec.IncludeDirs) != 1 || spec.IncludeDirs[0] != "src/mylib" {
+		t.Fatalf("include_dirs = %#v", spec.IncludeDirs)
+	}
+}
+
+func TestNormalizeRelPathRejectsEscape(t *testing.T) {
+	if _, err := NormalizeRelPath("/tmp/lib"); err == nil {
+		t.Fatal("absolute path accepted")
+	}
+	if _, err := NormalizeRelPath("../outside"); err == nil {
+		t.Fatal("parent escape accepted")
+	}
+	got, err := NormalizeRelPath("./build/Release")
+	if err != nil || got != "build/Release" {
+		t.Fatalf("got %q err %v", got, err)
+	}
+}
+
+func TestNewProjectDoesNotWritePackages(t *testing.T) {
+	project := NewProject(t.TempDir())
+	if len(project.Packages) != 0 {
+		t.Fatalf("packages = %#v", project.Packages)
+	}
+}
+
+func TestFindAndUpsertPackage(t *testing.T) {
+	project := NewProject(t.TempDir())
+	project.Name = "workspace"
+	if _, _, ok := project.FindPackage(""); !ok {
+		t.Fatal("single synthetic package should match empty id")
+	}
+	if err := project.UpsertPackage(PackageSpec{Name: "alpha", Version: "1.0"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := project.UpsertPackage(PackageSpec{Name: "beta", LibDirs: []string{"out/beta"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(project.ListPackages()) != 2 {
+		t.Fatalf("list = %#v", project.ListPackages())
+	}
+	spec, _, ok := project.FindPackage("beta")
+	if !ok || spec.LibDirs[0] != "out/beta" {
+		t.Fatalf("beta = %#v ok=%v", spec, ok)
+	}
+	if _, _, ok := project.FindPackage(""); ok {
+		t.Fatal("empty id must not match when multiple packages exist")
+	}
+}

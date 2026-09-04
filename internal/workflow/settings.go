@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,15 @@ type ProjectSettingsInput struct {
 	Remote           string
 	BuildSystem      string
 	OutputFolder     string
+	LibDirs          []string
+	IncludeDirs      []string
+	HasLibDirs       bool
+	HasIncludeDirs   bool
+	Workspaces       []string
+	HasWorkspaces    bool
+	Package          string
+	Version          string
+	NoQt             bool
 }
 
 type GlobalSettingsInput struct {
@@ -52,7 +62,7 @@ func (a *App) SaveProjectSettings(input ProjectSettingsInput) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if input.Name != "" {
+	if input.Package == "" && input.Name != "" {
 		if strings.TrimSpace(project.Name) != "" && input.Name != project.Name {
 			project.NameLocked = true
 		}
@@ -97,6 +107,56 @@ func (a *App) SaveProjectSettings(input ProjectSettingsInput) (Report, error) {
 	}
 	if input.OutputFolder != "" {
 		project.OutputFolder = input.OutputFolder
+	}
+	if input.HasWorkspaces {
+		workspaces, err := config.NormalizeWorkspaceGlobs(input.Workspaces)
+		if err != nil {
+			return Report{}, fmt.Errorf("workspace: %w", err)
+		}
+		project.Workspaces = workspaces
+	}
+	if input.Package != "" {
+		spec, _, ok := project.FindPackage(input.Package)
+		if !ok {
+			spec = config.PackageSpec{Name: input.Package}
+		}
+		if input.Name != "" {
+			spec.Name = input.Name
+		}
+		if spec.Name == "" {
+			spec.Name = input.Package
+		}
+		if input.Version != "" {
+			spec.Version = input.Version
+		}
+		if input.HasLibDirs {
+			spec.LibDirs = input.LibDirs
+		}
+		if input.HasIncludeDirs {
+			spec.IncludeDirs = input.IncludeDirs
+		}
+		if input.NoQt {
+			spec.NoQt = true
+			spec.QtVersion = ""
+		} else if input.QtVersion != "" {
+			spec.NoQt = false
+			spec.QtVersion = input.QtVersion
+		}
+		if err := project.UpsertPackage(spec); err != nil {
+			return Report{}, err
+		}
+	} else if input.HasLibDirs || input.HasIncludeDirs {
+		spec := project.PrimaryPackage()
+		libDirs, includeDirs := spec.LibDirs, spec.IncludeDirs
+		if input.HasLibDirs {
+			libDirs = input.LibDirs
+		}
+		if input.HasIncludeDirs {
+			includeDirs = input.IncludeDirs
+		}
+		if err := project.SetPrimaryArtifactDirs(libDirs, includeDirs); err != nil {
+			return Report{}, err
+		}
 	}
 	if err := config.SaveProject(a.Dir, project); err != nil {
 		return Report{}, err

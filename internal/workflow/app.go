@@ -141,7 +141,7 @@ func fillProjectDefaults(dir string, project *config.Project) {
 }
 
 func applyPackageIdentity(dir string, project *config.Project) bool {
-	if project == nil || project.NameLocked && strings.TrimSpace(project.Name) != "" {
+	if project == nil || len(project.Packages) > 0 || project.NameLocked && strings.TrimSpace(project.Name) != "" {
 		return false
 	}
 	guess := manifest.DetectPackageName(dir)
@@ -333,23 +333,37 @@ type PublishRequest struct {
 	Profile         string
 	Note            string
 	DryRun          bool
+	All             bool
+	LibDirs         []string
+	IncludeDirs     []string
+	Package         string
+	NoQt            bool
+	Replace         bool // 上传成功后删除远程上的旧版本
 }
 
 // publishPlan is a fully resolved publish target: identity, remote, platform,
 // toolchain, and the Conan settings derived from them. resolvePublishPlan
 // produces it so PublishPackage stays a short orchestration.
 type publishPlan struct {
-	Name      string
-	Version   string
-	Reference string
-	Channel   string
-	Remote    string
-	Profile   string
-	Note      string
-	Spec      config.PlatformSpec
-	Compiler  config.Compiler
-	QtVersion string
-	Settings  platform.Settings
+	Name            string
+	Version         string
+	Reference       string
+	Channel         string
+	Remote          string
+	Profile         string
+	Note            string
+	Spec            config.PlatformSpec
+	Compiler        config.Compiler
+	QtVersion       string
+	Settings        platform.Settings
+	LibDirs         []string
+	IncludeDirs     []string
+	PersistLibDirs  bool
+	PersistIncludes bool
+	Selector        string
+	RecipeDir       string
+	WorkspaceDir    string // 相对项目根；组件自带 conanfile.py 的 workspace 非空
+	OldVersion      string // 发布前组件记录/配方里的版本；Replace 时删除该版本
 }
 
 func (a *App) Publish(ctx context.Context, profileName, remote, reference, channel string) (Report, error) {
@@ -357,18 +371,24 @@ func (a *App) Publish(ctx context.Context, profileName, remote, reference, chann
 }
 
 func (a *App) PublishPackage(ctx context.Context, request PublishRequest) (Report, error) {
+	if request.All && strings.TrimSpace(request.Package) != "" {
+		return Report{}, errors.New("--all 与 --package 不能同时使用")
+	}
 	project, err := a.Project()
 	if err != nil {
 		return Report{}, err
+	}
+	if request.All {
+		return a.publishAll(ctx, project, request)
 	}
 	plan, err := a.resolvePublishPlan(ctx, project, request)
 	if err != nil {
 		return Report{}, err
 	}
-	if !request.DryRun && !manifest.HasPrebuiltLibraries(a.Dir) {
-		return Report{}, errors.New("未找到已编译的库（例如 lib/*.so、lib/*.a、lib/*.dll）。请先用发布页同一套系统/编译器/Qt/Debug|Release 在本机编好，再发布")
+	if !request.DryRun && !manifest.HasPrebuiltLibraries(a.Dir, plan.LibDirs) {
+		return Report{}, fmt.Errorf("未找到已编译的库。已查找：%s。请先用发布页同一套系统/编译器/Qt/Debug|Release 在本机编好，再发布", strings.Join(prebuiltSearchDirs(plan.LibDirs), ", "))
 	}
-	recipePlan := manifest.PlanPublishIdentity(a.Dir)
+	recipePlan := a.planRecipe(plan)
 	summary := plan.summary(recipePlan)
 	if request.DryRun {
 		return Report{OK: true, Action: "publish-preview", Message: recipePlan.Hint(), Data: summary}, nil
@@ -380,8 +400,98 @@ func (a *App) PublishPackage(ctx context.Context, request PublishRequest) (Repor
 	summary["recipe_action"] = applied.Action
 	summary["recipe_path"] = applied.Path
 	report, err := a.uploadPackage(ctx, plan)
+	if err == nil && request.Replace {
+		a.replacePreviousVersion(ctx, plan, summary, &report)
+	}
 	report.Data = summary
 	return report, err
+}
+
+// replacePreviousVersion deletes the component's previous reference from the
+// remote after a successful publish, so a version bump leaves only the new
+// version behind. Removal failures surface as a warning, not a publish error.
+func (a *App) replacePreviousVersion(ctx context.Context, plan *publishPlan, summary map[string]any, report *Report) {
+	if plan.OldVersion == "" || plan.OldVersion == plan.Version {
+		return
+	}
+	reference := plan.Name + "/" + plan.OldVersion
+	if _, err := a.Client.Remove(ctx, reference, plan.Remote); err != nil {
+		summary["replace_warning"] = fmt.Sprintf("新版本已发布，但删除远程旧版本 %s 失败：%s。可手动执行 conan remove %s -r %s", reference, firstLine(err.Error()), reference, plan.Remote)
+		return
+	}
+	summary["replaced_reference"] = reference
+	report.Output = joinOutput(report.Output, "已删除远程旧版本 "+reference)
+}
+
+// planRecipe previews the identity action for the plan: workspace components
+// patch their own conanfile.py in place, everything else uses the isolated
+// .conan-cli/recipes/<name>/ recipe.
+func (a *App) planRecipe(plan *publishPlan) manifest.IdentityResult {
+	if plan.WorkspaceDir != "" {
+		return manifest.PlanPublishIdentityIn(filepath.Join(a.Dir, filepath.FromSlash(plan.WorkspaceDir)))
+	}
+	return manifest.PlanPublishIdentity(a.Dir, plan.Name)
+}
+
+// publishAll runs the full single-package flow for every component
+// (workspaces ∪ packages[]). One failing component does not stop the rest.
+func (a *App) publishAll(ctx context.Context, project *config.Project, request PublishRequest) (Report, error) {
+	components := resolveComponents(a.Dir, project)
+	if len(components) == 0 {
+		return Report{}, errors.New("没有发现可发布的组件")
+	}
+	action := "publish"
+	if request.DryRun {
+		action = "publish-preview"
+	}
+	results := make([]map[string]any, 0, len(components))
+	succeeded, failed := 0, 0
+	var firstErr error
+	for _, comp := range components {
+		perPackage := request
+		perPackage.All = false
+		perPackage.Package = comp.Name
+		report, err := a.PublishPackage(ctx, perPackage)
+		result := map[string]any{"package": comp.Name, "ok": err == nil}
+		if data, ok := report.Data.(map[string]any); ok {
+			if reference, _ := data["reference"].(string); reference != "" {
+				result["reference"] = reference
+			}
+			if recipeAction, _ := data["recipe_action"].(string); recipeAction != "" {
+				result["recipe_action"] = recipeAction
+			}
+			if replaced, _ := data["replaced_reference"].(string); replaced != "" {
+				result["replaced"] = replaced
+			}
+			if warning, _ := data["replace_warning"].(string); warning != "" {
+				result["replace_warning"] = warning
+			}
+		}
+		if err != nil {
+			result["error"] = err.Error()
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else {
+			succeeded++
+		}
+		results = append(results, result)
+	}
+	data := map[string]any{"results": results}
+	if failed == 0 {
+		message := fmt.Sprintf("已发布 %d 个组件", succeeded)
+		if request.DryRun {
+			message = fmt.Sprintf("已生成 %d 个组件的发布预览", succeeded)
+		}
+		return Report{OK: true, Action: action, Message: message, Data: data}, nil
+	}
+	message := fmt.Sprintf("%d 个组件：%d 成功 %d 失败", len(components), succeeded, failed)
+	if request.DryRun {
+		message = fmt.Sprintf("%d 个组件的发布预览：%d 成功 %d 失败", len(components), succeeded, failed)
+	}
+	report := Report{OK: false, Action: action, ExitCode: 1, Message: message, Error: firstErr.Error(), Data: data}
+	return report, firstErr
 }
 
 // resolvePublishPlan fills every publish default: profile, remote (via the
@@ -409,6 +519,7 @@ func (a *App) resolvePublishPlan(ctx context.Context, project *config.Project, r
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.Version = strings.TrimSpace(request.Version)
+	request.Package = strings.TrimSpace(request.Package)
 	if reference := strings.TrimSpace(request.Ref); reference != "" && (request.Name == "" || request.Version == "") {
 		name, version := splitNameVersion(reference)
 		if request.Name == "" {
@@ -418,15 +529,15 @@ func (a *App) resolvePublishPlan(ctx context.Context, project *config.Project, r
 			request.Version = version
 		}
 	}
-	identity := strings.TrimSpace(project.Name)
+	pkg, err := resolvePublishPackage(a.Dir, project, request)
+	if err != nil {
+		return nil, err
+	}
 	if request.Name == "" {
-		request.Name = identity
-	} else if identity != "" && request.Name != identity {
-		project.Name = request.Name
-		project.NameLocked = true
-		if err := config.SaveProject(a.Dir, project); err != nil {
-			return nil, fmt.Errorf("保存项目配置失败: %w", err)
-		}
+		request.Name = pkg.Name
+	}
+	if request.Version == "" {
+		request.Version = pkg.Version
 	}
 	if request.Version == "" {
 		if metadata, _, inspectErr := a.Client.Inspect(ctx); inspectErr == nil {
@@ -438,6 +549,17 @@ func (a *App) resolvePublishPlan(ctx context.Context, project *config.Project, r
 		return nil, err
 	}
 	plan.Name, plan.Version = request.Name, request.Version
+	plan.Selector = pkg.Name
+	if plan.Selector == "" {
+		plan.Selector = request.Name
+	}
+	plan.OldVersion = pkg.Version
+	plan.RecipeDir = manifest.PublishRecipeDir(a.Dir, request.Name)
+	if pkg.IsWorkspace() {
+		// workspace 组件自带配方：直接在其目录里 export-pkg，配方就地补丁。
+		plan.WorkspaceDir = pkg.Dir
+		plan.RecipeDir = pkg.Dir
+	}
 	plan.Reference = request.Name + "/" + request.Version
 
 	spec := project.Platform.Publish
@@ -460,25 +582,96 @@ func (a *App) resolvePublishPlan(ctx context.Context, project *config.Project, r
 	if request.CompilerVersion != "" {
 		compiler.Version = request.CompilerVersion
 	}
-	qt := strings.TrimSpace(request.QtVersion)
-	if qt == "" {
-		qt = project.QtVersion
-	}
+	qt := resolvePublishQt(request, pkg, project)
 	if strings.TrimSpace(compiler.ID) == "" || strings.TrimSpace(compiler.Version) == "" {
 		return nil, errors.New("请在发布页填写编译器类型和版本，例如 gcc 13")
 	}
-	if qt == "" {
-		return nil, errors.New("请在发布页填写 Qt 版本，例如 6.8")
-	}
 	plan.Spec, plan.Compiler, plan.QtVersion = spec, compiler, qt
 	plan.Settings = platform.Resolve(spec, compiler, qt)
+	libDirs, err := config.NormalizeRelPaths(request.LibDirs)
+	if err != nil {
+		return nil, fmt.Errorf("lib-dir: %w", err)
+	}
+	includeDirs, err := config.NormalizeRelPaths(request.IncludeDirs)
+	if err != nil {
+		return nil, fmt.Errorf("include-dir: %w", err)
+	}
+	plan.PersistLibDirs = len(libDirs) > 0
+	plan.PersistIncludes = len(includeDirs) > 0
+	if len(libDirs) == 0 {
+		libDirs = pkg.LibDirs
+	}
+	if len(includeDirs) == 0 {
+		includeDirs = pkg.IncludeDirs
+	}
+	plan.LibDirs, plan.IncludeDirs = libDirs, includeDirs
 	return plan, nil
+}
+
+func resolvePublishQt(request PublishRequest, pkg component, project *config.Project) string {
+	if request.NoQt || pkg.NoQt {
+		return ""
+	}
+	if qt := strings.TrimSpace(request.QtVersion); qt != "" {
+		return qt
+	}
+	if qt := strings.TrimSpace(pkg.QtVersion); qt != "" {
+		return qt
+	}
+	if project == nil {
+		return ""
+	}
+	return strings.TrimSpace(project.QtVersion)
+}
+
+// resolvePublishPackage picks the component to publish. --package（或
+// --name）先按组件名匹配 workspace，再匹配 packages[]；多组件未指定时报错并
+// 列出全部组件名。
+func resolvePublishPackage(dir string, project *config.Project, request PublishRequest) (component, error) {
+	id := request.Package
+	if id == "" {
+		id = request.Name
+	}
+	components := resolveComponents(dir, project)
+	if id != "" {
+		for _, comp := range components {
+			if comp.Name == id && comp.Source == "workspace" {
+				return comp, nil
+			}
+		}
+		for _, comp := range components {
+			if comp.Name == id {
+				return comp, nil
+			}
+		}
+		return component{Name: id, Source: "declared"}, nil
+	}
+	if len(components) > 1 {
+		names := make([]string, 0, len(components))
+		for _, comp := range components {
+			if comp.Name != "" {
+				names = append(names, comp.Name)
+			}
+		}
+		return component{}, fmt.Errorf("项目有多个组件，请用 --package 指定（或用 --all 全部发布）：%s", strings.Join(names, ", "))
+	}
+	if len(components) == 1 {
+		return components[0], nil
+	}
+	return component{Name: project.Name, Source: "declared"}, nil
+}
+
+func prebuiltSearchDirs(libDirs []string) []string {
+	if len(libDirs) > 0 {
+		return libDirs
+	}
+	return manifest.DefaultLibDirs()
 }
 
 // summary renders the data payload shared by dry-run preview and the real
 // publish report.
 func (p *publishPlan) summary(recipePlan manifest.IdentityResult) map[string]any {
-	return map[string]any{
+	data := map[string]any{
 		"reference":      p.Reference,
 		"name":           p.Name,
 		"version":        p.Version,
@@ -495,27 +688,84 @@ func (p *publishPlan) summary(recipePlan manifest.IdentityResult) map[string]any
 		"recipe_action":  recipePlan.Action,
 		"recipe_path":    recipePlan.Path,
 		"recipe_hint":    recipePlan.Hint(),
-		"command": fmt.Sprintf("conan-cli publish --remote %s --os %s --arch %s --build-type %s --compiler %s --compiler-version %s --qt %s --name %s --version %s",
-			p.Remote, p.Settings.OS, p.Settings.Arch, p.Settings.BuildType, p.Compiler.ID, p.Compiler.Version, p.QtVersion, p.Name, p.Version),
+		"package":        p.Selector,
+		"recipe_dir":     p.RecipeDir,
+		"lib_dirs":       prebuiltSearchDirs(p.LibDirs),
+		"include_dirs":   p.IncludeDirs,
+		"command": fmt.Sprintf("conan-cli publish --package %s --remote %s --os %s --arch %s --build-type %s --compiler %s --compiler-version %s --qt %s --name %s --version %s",
+			p.Selector, p.Remote, p.Settings.OS, p.Settings.Arch, p.Settings.BuildType, p.Compiler.ID, p.Compiler.Version, p.QtVersion, p.Name, p.Version),
 	}
+	if p.OldVersion != "" && p.OldVersion != p.Version {
+		data["previous_version"] = p.OldVersion
+	}
+	return data
 }
 
 // applyPublishRecipe patches name/version/Qt into the recipe and persists the
 // publish toolchain so the next publish starts from the same target.
 func (a *App) applyPublishRecipe(plan *publishPlan, buildSystem string) (manifest.IdentityResult, error) {
-	applied, err := manifest.ApplyPublishIdentity(a.Dir, manifest.PublishIdentity{
+	identity := manifest.PublishIdentity{
 		Name:        plan.Name,
 		Version:     plan.Version,
 		QtVersion:   plan.QtVersion,
 		BuildSystem: buildSystem,
-	})
+		LibDirs:     plan.LibDirs,
+		IncludeDirs: plan.IncludeDirs,
+	}
+	if plan.WorkspaceDir != "" {
+		// workspace 组件：就地补丁其自带配方，不把组件登记进 packages[]。
+		applied, err := manifest.ApplyPublishIdentityIn(filepath.Join(a.Dir, filepath.FromSlash(plan.WorkspaceDir)), identity)
+		if err != nil {
+			return applied, err
+		}
+		settings := ProjectSettingsInput{
+			CompilerID: plan.Compiler.ID, CompilerVersion: plan.Compiler.Version,
+			PublishOS: plan.Spec.OS, PublishArch: plan.Spec.Arch, PublishBuildType: plan.Spec.BuildType,
+		}
+		if plan.QtVersion != "" {
+			settings.QtVersion = plan.QtVersion
+		}
+		if _, err := a.SaveProjectSettings(settings); err != nil {
+			return applied, err
+		}
+		return applied, nil
+	}
+	applied, err := manifest.ApplyPublishIdentity(a.Dir, identity)
 	if err != nil {
 		return applied, err
 	}
-	if _, err := a.SaveProjectSettings(ProjectSettingsInput{
-		QtVersion: plan.QtVersion, CompilerID: plan.Compiler.ID, CompilerVersion: plan.Compiler.Version,
+	project, err := a.Project()
+	if err != nil {
+		return applied, err
+	}
+	spec, _, ok := project.FindPackage(plan.Selector)
+	if !ok {
+		spec, _, _ = project.FindPackage(plan.Name)
+	}
+	spec.Name = plan.Name
+	spec.Version = plan.Version
+	spec.QtVersion = plan.QtVersion
+	spec.NoQt = plan.QtVersion == ""
+	if plan.PersistLibDirs || len(spec.LibDirs) == 0 {
+		spec.LibDirs = plan.LibDirs
+	}
+	if plan.PersistIncludes || len(spec.IncludeDirs) == 0 {
+		spec.IncludeDirs = plan.IncludeDirs
+	}
+	if err := project.UpsertPackage(spec); err != nil {
+		return applied, err
+	}
+	if err := config.SaveProject(a.Dir, project); err != nil {
+		return applied, err
+	}
+	settings := ProjectSettingsInput{
+		CompilerID: plan.Compiler.ID, CompilerVersion: plan.Compiler.Version,
 		PublishOS: plan.Spec.OS, PublishArch: plan.Spec.Arch, PublishBuildType: plan.Spec.BuildType,
-	}); err != nil {
+	}
+	if plan.QtVersion != "" {
+		settings.QtVersion = plan.QtVersion
+	}
+	if _, err := a.SaveProjectSettings(settings); err != nil {
 		return applied, err
 	}
 	return applied, nil
@@ -524,7 +774,11 @@ func (a *App) applyPublishRecipe(plan *publishPlan, buildSystem string) (manifes
 // uploadPackage packs the prebuilt libraries with export-pkg and uploads the
 // reference to the remote.
 func (a *App) uploadPackage(ctx context.Context, plan *publishPlan) (Report, error) {
-	packed, err := a.Client.ExportPkg(ctx, plan.Profile, plan.Settings.Args()...)
+	recipe := plan.RecipeDir
+	if recipe == "" {
+		recipe = manifest.PublishRecipeDir(a.Dir, plan.Name)
+	}
+	packed, err := a.Client.ExportPkg(ctx, recipe, plan.Profile, plan.Settings.Args()...)
 	if err != nil {
 		return reportFromResult("publish", packed, err), err
 	}

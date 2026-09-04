@@ -52,15 +52,19 @@ func (a *App) Status(ctx context.Context) (Report, error) {
 	}
 
 	data := map[string]any{
-		"initialized":  initialized,
-		"project":      project,
-		"global":       global.View(),
-		"scan":         scanResult,
-		"recipe":       recipe,
-		"conanfile":    conanfile,
-		"host":         scanResult.Host,
-		"machine":      map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH},
-		"package_name": nameGuess,
+		"initialized":        initialized,
+		"project":            project,
+		"global":             global.View(),
+		"scan":               scanResult,
+		"recipe":             recipe,
+		"conanfile":          conanfile,
+		"host":               scanResult.Host,
+		"machine":            map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH},
+		"package_name":       nameGuess,
+		"package_candidates": manifest.DetectPackageNames(a.Dir),
+	}
+	if projectErr == nil {
+		data["packages"] = componentInfos(resolveComponents(a.Dir, project))
 	}
 	if projectErr != nil {
 		data["project_error"] = projectErr.Error()

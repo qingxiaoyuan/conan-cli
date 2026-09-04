@@ -72,18 +72,31 @@ type Platform struct {
 }
 
 type Project struct {
-	Name                string   `yaml:"name" json:"name"`
-	NameLocked          bool     `yaml:"name_locked,omitempty" json:"name_locked,omitempty"`
-	BuildSystem         string   `yaml:"build_system" json:"build_system"`
-	DefaultProfile      string   `yaml:"default_profile,omitempty" json:"default_profile,omitempty"`
-	QtVersion           string   `yaml:"qt_version,omitempty" json:"qt_version,omitempty"`
-	Compiler            Compiler `yaml:"compiler,omitempty" json:"compiler"`
-	Platform            Platform `yaml:"platform,omitempty" json:"platform"`
-	Remote              string   `yaml:"remote,omitempty" json:"remote,omitempty"`
-	Channel             string   `yaml:"channel" json:"channel"`
-	MissingBinaryPolicy string   `yaml:"missing_binary_policy" json:"missing_binary_policy"`
-	OutputFolder        string   `yaml:"output_folder" json:"output_folder"`
-	Dependencies        []string `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
+	Name                string        `yaml:"name" json:"name"`
+	NameLocked          bool          `yaml:"name_locked,omitempty" json:"name_locked,omitempty"`
+	BuildSystem         string        `yaml:"build_system" json:"build_system"`
+	DefaultProfile      string        `yaml:"default_profile,omitempty" json:"default_profile,omitempty"`
+	QtVersion           string        `yaml:"qt_version,omitempty" json:"qt_version,omitempty"`
+	Compiler            Compiler      `yaml:"compiler,omitempty" json:"compiler"`
+	Platform            Platform      `yaml:"platform,omitempty" json:"platform"`
+	Remote              string        `yaml:"remote,omitempty" json:"remote,omitempty"`
+	Channel             string        `yaml:"channel" json:"channel"`
+	MissingBinaryPolicy string        `yaml:"missing_binary_policy" json:"missing_binary_policy"`
+	OutputFolder        string        `yaml:"output_folder" json:"output_folder"`
+	Dependencies        []string      `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
+	Packages            []PackageSpec `yaml:"packages,omitempty" json:"packages,omitempty"`
+	Workspaces          []string      `yaml:"workspaces,omitempty" json:"workspaces,omitempty"`
+}
+
+// PackageSpec describes one publishable component. Phase 1 uses at most the
+// first entry for artifact paths; later phases will select among them.
+type PackageSpec struct {
+	Name        string   `yaml:"name,omitempty" json:"name,omitempty"`
+	Version     string   `yaml:"version,omitempty" json:"version,omitempty"`
+	LibDirs     []string `yaml:"lib_dirs,omitempty" json:"lib_dirs,omitempty"`
+	IncludeDirs []string `yaml:"include_dirs,omitempty" json:"include_dirs,omitempty"`
+	QtVersion   string   `yaml:"qt_version,omitempty" json:"qt_version,omitempty"`
+	NoQt        bool     `yaml:"no_qt,omitempty" json:"no_qt,omitempty"`
 }
 
 func ProjectPath(dir string) string {
@@ -181,6 +194,25 @@ func ValidateProject(project *Project) error {
 	if err := ValidatePlatformSpec(project.Platform.Publish); err != nil {
 		return fmt.Errorf("publish platform: %w", err)
 	}
+	seen := map[string]bool{}
+	for index := range project.Packages {
+		if err := normalizePackageSpec(&project.Packages[index]); err != nil {
+			return fmt.Errorf("package %d: %w", index, err)
+		}
+		name := project.Packages[index].Name
+		if name == "" {
+			continue
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate package name %q", name)
+		}
+		seen[name] = true
+	}
+	workspaces, err := NormalizeWorkspaceGlobs(project.Workspaces)
+	if err != nil {
+		return fmt.Errorf("workspaces: %w", err)
+	}
+	project.Workspaces = workspaces
 	return nil
 }
 

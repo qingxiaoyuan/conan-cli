@@ -25,6 +25,31 @@ var skipDirNames = map[string]bool{
 	"test_package": true, "build": true, ".git": true, ".conan-cli": true,
 }
 
+func DetectPackageNames(dir string) []PackageName {
+	var out []PackageName
+	seen := map[string]bool{}
+	add := func(name, source string) {
+		name = sanitizePkgName(name)
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, PackageName{Name: name, Source: source})
+	}
+	for _, name := range qmakeLibTargets(dir) {
+		add(name, "qmake")
+	}
+	for _, name := range cmakeLibNames(dir) {
+		add(name, "cmake")
+	}
+	if len(out) == 0 {
+		if guess := DetectPackageName(dir); guess.Name != "" {
+			out = append(out, guess)
+		}
+	}
+	return out
+}
+
 func DetectPackageName(dir string) PackageName {
 	if name := recipePackageName(dir); name != "" {
 		return PackageName{Name: name, Source: "recipe"}

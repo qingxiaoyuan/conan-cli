@@ -21,20 +21,50 @@ func TestGenerateConsumeAndPublish(t *testing.T) {
 	if !strings.Contains(text, "kind: consume") || !strings.Contains(text, `"qtutils/1.0"`) || !strings.Contains(text, `*:qt_version`) {
 		t.Fatalf("consume recipe = %s", text)
 	}
-	if _, err := Generate(dir, GenerateInput{Kind: RecipePublish, Name: "qtutils", Version: "1.0", QtVersion: "6.8"}); err == nil {
-		t.Fatal("expected refuse overwrite of generated consume recipe without force")
-	}
-	path, err = Generate(dir, GenerateInput{Kind: RecipePublish, Name: "qtutils", Version: "1.0", QtVersion: "6.8", Force: true})
+	path, err = Generate(dir, GenerateInput{Kind: RecipePublish, Name: "qtutils", Version: "1.0", QtVersion: "6.8"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(path, filepath.Join(".conan-cli", "recipes", "qtutils")) {
+		t.Fatalf("publish recipe path = %s", path)
+	}
+	root, _ := os.ReadFile(filepath.Join(dir, "conanfile.py"))
+	if !strings.Contains(string(root), "kind: consume") {
+		t.Fatal("root consume recipe was overwritten by publish generate")
+	}
 	data, _ = os.ReadFile(path)
 	text = string(data)
-	if !strings.Contains(text, "kind: publish") || !strings.Contains(text, `"qt_version"`) || !strings.Contains(text, pythonClass("qtutils")+"Conan") || !strings.Contains(text, "def export_sources") || !strings.Contains(text, "未找到已编译的库") || !strings.Contains(text, "def build(self):\n        pass") {
+	if !strings.Contains(text, "kind: publish") || !strings.Contains(text, `"qt_version"`) || !strings.Contains(text, pythonClass("qtutils")+"Conan") || !strings.Contains(text, "_project_root") || !strings.Contains(text, "未找到已编译的库") || !strings.Contains(text, "def build(self):\n        pass") || !strings.Contains(text, "_lib_dirs = []") {
 		t.Fatalf("publish recipe = %s", text)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "conanfile.txt")); !os.IsNotExist(err) {
-		t.Fatal("expected conanfile.txt to be removed")
+}
+
+func TestGeneratePublishUsesConfiguredDirs(t *testing.T) {
+	dir := t.TempDir()
+	path, err := Generate(dir, GenerateInput{
+		Kind: RecipePublish, Name: "qtutils", Version: "1.0", QtVersion: "6.8",
+		LibDirs: []string{"build/Release", "src/mylib/lib"}, IncludeDirs: []string{"src/mylib"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	text := string(data)
+	if !strings.Contains(text, `"build/Release"`) || !strings.Contains(text, `"src/mylib/lib"`) || !strings.Contains(text, `"src/mylib"`) || !strings.Contains(text, "if self._lib_dirs") {
+		t.Fatalf("publish recipe missing configured dirs: %s", text)
+	}
+}
+
+func TestGeneratePublishWithoutQt(t *testing.T) {
+	dir := t.TempDir()
+	path, err := Generate(dir, GenerateInput{Kind: RecipePublish, Name: "plainlib", Version: "1.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	text := string(data)
+	if strings.Contains(text, "qt_version") {
+		t.Fatalf("non-Qt recipe should not mention qt_version: %s", text)
 	}
 }
 

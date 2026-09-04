@@ -156,6 +156,20 @@ var projectSettingsFields = []settingsField{
 		get: func(s *settingsScope) string { return s.project.OutputFolder },
 		set: func(s *settingsScope, value string) { s.project.OutputFolder = value },
 	},
+	{
+		aliases: []string{"lib-dir"}, label: "产物目录", editHint: "预编译库目录（逗号分隔，相对项目根）", placeholder: "lib/, bin/",
+		get: func(s *settingsScope) string { return config.JoinPathList(s.project.PrimaryPackage().LibDirs) },
+		set: func(s *settingsScope, value string) {
+			_ = s.project.SetPrimaryArtifactDirs(config.SplitPathList(value), s.project.PrimaryPackage().IncludeDirs)
+		},
+	},
+	{
+		aliases: []string{"include-dir"}, label: "头文件目录", editHint: "头文件目录（逗号分隔，相对项目根）", placeholder: "include/",
+		get: func(s *settingsScope) string { return config.JoinPathList(s.project.PrimaryPackage().IncludeDirs) },
+		set: func(s *settingsScope, value string) {
+			_ = s.project.SetPrimaryArtifactDirs(s.project.PrimaryPackage().LibDirs, config.SplitPathList(value))
+		},
+	},
 }
 
 func settingsFieldsFor(active string) []settingsField {
