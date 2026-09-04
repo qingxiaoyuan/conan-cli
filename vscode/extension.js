@@ -14,7 +14,7 @@ const refreshJobs = new WeakMap();
 const CONNECTION_TTL = 30 * 1000;
 
 // install / publish 会下载或上传大体积制品，动辄超过两分钟，用独立的
-// 长超时；其余命令保持 120 秒。两个超时都可以在设置里调整。
+// 长超时；其余命令保持 120 秒。两个阈值都可以在设置里调整。
 const LONG_RUNNING_ACTIONS = new Set(['install', 'publish']);
 
 function timeoutMsFor(args) {
@@ -364,8 +364,17 @@ async function handleWebviewMessage(panel, root, message) {
 
 function loadWebview(file, webview) {
   const fs = require('fs');
+  const zlib = require('zlib');
   const nonce = crypto.randomBytes(16).toString('hex');
-  return fs.readFileSync(path.join(__dirname, file), 'utf8').replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
+  let html;
+  if (file === 'dashboard.html') {
+    const parts = [0, 1, 2, 3].map((i) => fs.readFileSync(path.join(__dirname, `dashboard.html.gz.b64.${i}`), 'utf8'));
+    const b64 = parts.join('').replace(/\s+/g, '');
+    html = zlib.gunzipSync(Buffer.from(b64, 'base64')).toString('utf8');
+  } else {
+    html = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  }
+  return html.replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
 }
 
 function openDashboard(root, view) {
