@@ -98,7 +98,7 @@
     const api = acquireVsCodeApi();
     const $ = (id) => document.getElementById(id);
     const osName = (v) => ({windows:'Windows',linux:'Linux',kylin:'麒麟'}[v]||v||'-');
-    const archName = (v) => ({x86:'x86 32 位',x64:'x64 64 位',arm:'ARM 32 位',arm64:'ARM 64 位'}[v]||v||'-');
+    const archName = (v) => ({x86:'x86',x64:'x86_64',arm:'armv7',arm64:'aarch64（armv8）'}[v]||v||'-');
     let plat = {};
     let last = { status: {}, analyze: {}, probe: {} };
     function paint() {
