@@ -1,1 +1,181 @@
-PLACEHOLDER
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0 !important;
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      background: var(--vscode-sideBar-background);
+      color: var(--vscode-foreground);
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size, 12px);
+    }
+    button { font: inherit; cursor: pointer; }
+    .mono { font-family: var(--vscode-editor-font-family, ui-monospace, Menlo, Consolas, monospace); }
+    .wrap { min-height: 100%; height: 100%; display: flex; flex-direction: column; background: var(--vscode-sideBar-background); overflow: auto; }
+    .hd { padding: 12px 12px 8px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .brand { display: flex; align-items: center; gap: 6px; color: var(--vscode-foreground); font-size: 12px; font-weight: 600; letter-spacing: -.02em; }
+    .brand svg { color: var(--vscode-textLink-foreground); }
+    .icon { border: 0; background: none; color: var(--vscode-descriptionForeground); padding: 6px; border-radius: 6px; }
+    .icon:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+    .name { margin: 8px 0 0; font-size: 13px; font-weight: 500; color: var(--vscode-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { margin: 2px 0 0; color: var(--vscode-descriptionForeground); font-size: 10.5px; }
+    .facts { padding: 12px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+    .facts .row { font-size: 11.5px; margin: 6px 0; }
+    .muted { color: var(--vscode-descriptionForeground); }
+    .ok { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-debugIcon-startForeground))); }
+    .warn { color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); }
+    .acts { padding: 10px 12px; }
+    .primary {
+      width: 100%; height: 32px; border: 0; border-radius: 6px;
+      background: var(--vscode-button-background); color: var(--vscode-button-foreground); font-size: 12px; font-weight: 600;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+    .sec {
+      height: 32px; border-radius: 6px; border: 1px solid var(--vscode-button-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+      background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); font-size: 11.5px;
+    }
+    .sec.ok {
+      color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-debugIcon-startForeground)));
+      border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-charts-green)) 45%, var(--vscode-widget-border, transparent));
+    }
+    .sec.warn {
+      color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+    }
+    .sec:disabled { opacity: 1; cursor: default; }
+    .deps { flex: 1; padding: 8px 12px; border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+    .deps h3 { margin: 0 0 8px; font-size: 10px; color: var(--vscode-descriptionForeground); font-weight: 400; }
+    .ft { padding: 8px 12px; border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); color: var(--vscode-descriptionForeground); font-size: 10px; }
+    .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); display: inline-block; margin-right: 6px; }
+    .dot.ok { background: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hd">
+      <div class="row">
+        <div class="brand">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16.5 9.4 7.5 4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
+          Conan
+        </div>
+        <button class="icon" id="open" title="打开控制台">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        </button>
+      </div>
+      <p class="name" id="name">未初始化</p>
+      <p class="meta mono" id="meta"></p>
+    </div>
+    <div class="facts" id="facts"></div>
+    <div class="acts">
+      <div class="grid" style="margin-top:0">
+        <button class="sec" id="recipe">生成配方</button>
+        <button class="primary" id="install">拉取依赖</button>
+      </div>
+      <div class="grid">
+        <button class="sec" id="catalog">仓库</button>
+        <button class="sec" id="settings">连接仓库</button>
+      </div>
+    </div>
+    <div class="deps">
+      <h3 id="deps-title">直接依赖</h3>
+      <div id="deps"></div>
+      <p class="muted" id="deps-note" style="margin-top:12px;font-size:11px"></p>
+    </div>
+    <div class="ft row">
+      <span><span class="dot" id="dot"></span><span id="foot">等待刷新</span></span>
+      <span class="mono" id="user"></span>
+    </div>
+  </div>
+  <script nonce="{{NONCE}}">
+    const api = acquireVsCodeApi();
+    const $ = (id) => document.getElementById(id);
+    const osName = (v) => ({windows:'Windows',linux:'Linux',kylin:'麒麟'}[v]||v||'-');
+    const archName = (v) => ({x86:'x86 32 位',x64:'x64 64 位',arm:'ARM 32 位',arm64:'ARM 64 位'}[v]||v||'-');
+    let plat = {};
+    let last = { status: {}, analyze: {}, probe: {} };
+    function paint() {
+      const p = (last.status && last.status.project) || {};
+      const g = (last.status && last.status.global) || {};
+      plat = (p.platform && p.platform.consume) || plat;
+      const initialized = !!(last.status && last.status.initialized);
+      $('name').textContent = p.name || (initialized ? '项目' : 'Conan');
+      $('meta').textContent = '按目标平台拉取 Conan 依赖';
+      const nexus = g.nexus || {};
+      const probe = last.probe || {};
+      let conn = '检测中';
+      if (probe.ok === true) conn = '<span class="ok">仓库可达</span>';
+      else if (probe.ok === false) conn = '<span class="warn">连接失败</span>';
+      else if (g.has_password) conn = '<span class="ok">已登录</span>';
+      const pkgCount = ((last.status && last.status.packages) || []).length;
+      $('facts').innerHTML = [
+        ['目标平台', (plat.os||plat.arch) ? osName(plat.os)+' / '+archName(plat.arch)+' · '+(plat.build_type||'Release') : '未选'],
+        ['组件', pkgCount ? pkgCount + ' 个' : (p.name || '-')],
+        ['仓库', nexus.url ? nexus.url.replace(/^https?:\/\//,'') : (g.has_password ? '已保存' : '未配置')],
+        ['连接', conn]
+      ].map(([k,v]) => `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`).join('');
+      const rows = (last.analyze && last.analyze.dependencies) || [];
+      $('deps-title').textContent = '直接依赖 · ' + osName(plat.os) + ' / ' + archName(plat.arch);
+      const statusTag = (s) => ({found:'有制品',unknown:'未查询',missing_binary:'无匹配二进制',missing_package:'无此包',missing_version:'无此版本',mismatch:'不一致'}[s] || (s ? '缺失' : '未查询'));
+      const statusClass = (s) => (s === 'found' ? 'ok' : (s === 'unknown' || !s ? 'muted' : 'warn'));
+      $('deps').innerHTML = rows.map((r) => `<div class="row"><span class="mono">${r.reference}</span><span class="${statusClass(r.status)}">${statusTag(r.status)}</span></div>`).join('');
+      const miss = rows.find((r) => r.status === 'missing_binary' || r.status === 'missing_package' || r.status === 'missing_version');
+      $('deps-note').textContent = miss ? (miss.reference + ' 无匹配二进制。请联系你们的制品负责人；打开控制台改组合，不要本机编译。') : '';
+      const failed = rows.filter((r) => r.status && r.status !== 'found' && r.status !== 'unknown').length;
+      $('foot').textContent = initialized ? (failed ? failed + ' 项需处理' : '正常') : '尚未初始化';
+      $('dot').className = 'dot' + ((probe.ok || (initialized && !failed)) ? ' ok' : '');
+      $('user').textContent = nexus.username || '';
+      const connBtn = $('settings');
+      connBtn.classList.remove('ok', 'warn');
+      if (probe.ok === true) {
+        connBtn.textContent = '仓库可达';
+        connBtn.classList.add('ok');
+        connBtn.title = '仓库已连接，点开查看设置';
+      } else if (probe.ok === false) {
+        connBtn.textContent = '连接仓库';
+        connBtn.classList.add('warn');
+        connBtn.title = '仓库未连通，点此连接';
+      } else {
+        connBtn.textContent = g.has_password || nexus.url ? '检测中' : '连接仓库';
+        connBtn.title = '检查或配置仓库连接';
+      }
+      const hasPy = last.status && last.status.conanfile === 'conanfile.py';
+      const recipeBtn = $('recipe');
+      recipeBtn.textContent = hasPy ? '配方就绪' : '生成配方';
+      recipeBtn.classList.toggle('ok', !!hasPy);
+      recipeBtn.disabled = !!hasPy;
+      recipeBtn.title = hasPy ? '已有 conanfile.py' : '生成消费用 conanfile.py';
+    }
+    window.addEventListener('message', (e) => {
+      const m = e.data || {};
+      if (m.type === 'probe' && m.probe) last.probe = m.probe;
+      if (m.type === 'state') {
+        last.status = m.status || last.status;
+        last.analyze = m.analyze || last.analyze;
+        if (m.probe) last.probe = m.probe;
+      }
+      if (m.type === 'state' || m.type === 'probe') paint();
+    });
+    $('open').onclick = () => api.postMessage({type:'open', view:'download'});
+    $('catalog').onclick = () => api.postMessage({type:'open', view:'catalog'});
+    $('recipe').onclick = () => {
+      if (last.status && last.status.conanfile === 'conanfile.py') return;
+      const qt = ((last.status && last.status.project) || {}).qt_version || '';
+      api.postMessage({type:'recipe-generate', kind:'consume', qt});
+    };
+    $('install').onclick = () => {
+      if (plat.os && plat.arch) api.postMessage({type:'install', os:plat.os, arch:plat.arch, buildType: plat.build_type || 'Release'});
+      else api.postMessage({type:'open', view:'download'});
+    };
+    $('settings').onclick = () => api.postMessage({type:'open', view:'settings'});
+    api.postMessage({type:'refresh'});
+  </script>
+</body>
+</html>
