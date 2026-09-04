@@ -1,1 +1,1 @@
-<<<FILE:/workspace/conan-cli/vscode/extension.js>>>
+file:///workspace/conan-cli/vscode/extension.js
