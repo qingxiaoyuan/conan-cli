@@ -1,1 +1,0 @@
-@file:///workspace/conan-cli/vscode/dashboard.html
