@@ -13,8 +13,6 @@ let connectionProbePromise;
 const refreshJobs = new WeakMap();
 const CONNECTION_TTL = 30 * 1000;
 
-// install / publish 会下载或上传大体积制品，动辄超过两分钟，用独立的
-// 长超时；其余命令保持 120 秒。两个阈值都可以在设置里调整。
 const LONG_RUNNING_ACTIONS = new Set(['install', 'publish']);
 
 function timeoutMsFor(args) {
@@ -78,7 +76,7 @@ function executablePath(root) {
   const configured = String(vscode.workspace.getConfiguration('conanCli').get('binary', '') || '').trim();
   const useBundled = !configured || configured === 'conan-cli';
   if (!useBundled) {
-    const expanded = configured.replace(/\$\{workspaceFolder\}/g, root || '');
+    const expanded = configured.replace(/\${workspaceFolder}/g, root || '');
     if (path.isAbsolute(expanded) || expanded.includes('/') || expanded.includes('\\')) {
       return path.resolve(root || '', expanded);
     }
@@ -93,7 +91,7 @@ function cliEnvironment(root, extra = {}) {
   const env = { ...process.env, ...extra };
   const configured = String(vscode.workspace.getConfiguration('conanCli').get('conanBinary', '') || '').trim();
   if (configured) {
-    env.CONAN_BIN = configured.replace(/\$\{workspaceFolder\}/g, root || '');
+    env.CONAN_BIN = configured.replace(/\${workspaceFolder}/g, root || '');
     return env;
   }
   const python = bundledPython();
@@ -365,7 +363,15 @@ async function handleWebviewMessage(panel, root, message) {
 function loadWebview(file, webview) {
   const fs = require('fs');
   const nonce = crypto.randomBytes(16).toString('hex');
-  return fs.readFileSync(path.join(__dirname, file), 'utf8').replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
+  let html = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  if (file === 'dashboard.html') {
+    const styleUri = webview.asWebviewUri(vscode.Uri.file(path.join(__dirname, 'dashboard.css')));
+    const scriptUri = webview.asWebviewUri(vscode.Uri.file(path.join(__dirname, 'dashboard.js')));
+    html = html
+      .replaceAll('href="dashboard.css"', `href="${styleUri}"`)
+      .replaceAll('src="dashboard.js"', `src="${scriptUri}"`);
+  }
+  return html.replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
 }
 
 function openDashboard(root, view) {

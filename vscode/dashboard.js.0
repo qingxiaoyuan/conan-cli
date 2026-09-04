@@ -1,0 +1,34 @@
+const api = acquireVsCodeApi();
+    const OS = [['windows','Windows'],['linux','Linux'],['kylin','麒麟']];
+    // 展示用全量 Conan arch 字典；提交走现 CLI 约定（x86/x64/arm/arm64）或合法 Conan 名。
+    const ARCH_DICT = [
+      { submit:'x86', label:'x86', aliases:['x86','i386','i686'] },
+      { submit:'x64', label:'x86_64', aliases:['x86_64','x64','amd64','x86-64'] },
+      { submit:'arm', label:'armv7', aliases:['armv7','arm','arm32','armv7hf','armhf'] },
+      { submit:'arm64', label:'aarch64（armv8）', aliases:['aarch64','armv8','arm64','armv8.0'] },
+      { submit:'ppc32', label:'ppc32', aliases:['ppc32','ppc'] },
+      { submit:'ppc64', label:'ppc64', aliases:['ppc64'] },
+      { submit:'ppc64le', label:'ppc64le', aliases:['ppc64le'] },
+      { submit:'s390x', label:'s390x', aliases:['s390x'] },
+      { submit:'mips', label:'mips', aliases:['mips'] },
+      { submit:'mips64', label:'mips64', aliases:['mips64'] },
+      { submit:'sparc', label:'sparc', aliases:['sparc'] },
+      { submit:'sparcv9', label:'sparcv9', aliases:['sparcv9'] },
+      { submit:'riscv64', label:'riscv64', aliases:['riscv64'] },
+    ];
+    const ARCH_ALIASES = (() => {
+      const m = {};
+      ARCH_DICT.forEach((e) => e.aliases.forEach((a) => { m[a.toLowerCase()] = e.submit; }));
+      return m;
+    })();
+    const ARCH_LEGAL = new Set(ARCH_DICT.flatMap((e) => [e.submit, ...e.aliases].map((x) => x.toLowerCase())));
+    let archQuery = '', pubArchQuery = '';
+    let archErr = '', pubArchErr = '';
+    let comboExpanded = false;
+    let customArchMode = false, customPubArchMode = false;
+    const BUILD = [['Debug','Debug'],['Release','Release']];
+    const SKIP_CHECKS = { profiles:1, remotes:1, configured_remote:1, manifest_dependencies:1 };
+    let state = {status:{}, doctor:{}, analyze:{}, catalog:{}};
+    let osSel = '', archSel = '', btSel = '', pubOs = '', pubArch = '', pubBt = '', openPkg = '';
+    let pubSelected = '', publishing = false, loopActive = false, modalAction = null;
+    const pubChecked = new S
