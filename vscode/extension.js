@@ -1,1 +1,11 @@
-https://raw.githubusercontent.com/qingxiaoyuan/conan-cli/master/vscode/extension.js
+const fs = require('fs');
+const path = require('path');
+const Module = require('module');
+const parts = ['extension.part0.js.txt', 'extension.part1.js.txt', 'extension.part2.js.txt', 'extension.part3.js.txt', 'extension.part4.js.txt'];
+const code = parts.map((p) => fs.readFileSync(path.join(__dirname, p), 'utf8')).join('');
+const filename = path.join(__dirname, 'extension.assembled.js');
+const m = new Module(filename, module);
+m.filename = filename;
+m.paths = Module._nodeModulePaths(__dirname);
+m._compile(code, filename);
+module.exports = m.exports;
