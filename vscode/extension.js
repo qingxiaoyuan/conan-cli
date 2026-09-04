@@ -1,1 +1,1 @@
-file:///workspace/conan-cli/vscode/extension.js
+https://raw.githubusercontent.com/qingxiaoyuan/conan-cli/master/vscode/extension.js
