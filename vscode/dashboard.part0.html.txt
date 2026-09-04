@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    :root {
+      --bg: var(--vscode-editor-background);
+      --panel: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
+      --text: var(--vscode-foreground);
+      --muted: var(--vscode-descriptionForeground);
+      --border: var(--vscode-widget-border, var(--vscode-panel-border, var(--vscode-contrastBorder)));
+      --hover: var(--vscode-list-hoverBackground);
+      --sel: var(--vscode-list-activeSelectionBackground);
+      --sel-fg: var(--vscode-list-activeSelectionForeground);
+      --btn: var(--vscode-button-background);
+      --btn-fg: var(--vscode-button-foreground);
+      --btn2: var(--vscode-button-secondaryBackground);
+      --btn2-fg: var(--vscode-button-secondaryForeground);
+      --input-bg: var(--vscode-input-background);
+      --input-fg: var(--vscode-input-foreground);
+      --input-border: var(--vscode-input-border, var(--border));
+      --focus: var(--vscode-focusBorder);
+      --link: var(--vscode-textLink-foreground);
+      --ok: var(--vscode-testing-iconPassed, var(--vscode-charts-green, var(--vscode-debugIcon-startForeground)));
+      --warn: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+      --err: var(--vscode-errorForeground);
+      --widget: var(--vscode-editorWidget-background);
+      --badge-bg: var(--vscode-badge-background);
+      --badge-fg: var(--vscode-badge-foreground);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0 !important;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size, 13px);
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .mono { font-family: var(--vscode-editor-font-family, ui-monospace, Menlo, Consolas, monospace); }
+    .app { min-height: 100%; display: flex; flex-direction: column; background: var(--bg); }
+    .topbar {
+      height: 56px; padding: 0 20px; display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      background: var(--panel);
+    }
+    .brand { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 600; letter-spacing: -.02em; }
+    .brand svg { color: var(--link); }
+    nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: 8px; }
+    .nav-btn {
+      height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid transparent;
+      background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 500;
+    }
+    .nav-btn:hover { color: var(--text); background: var(--hover); }
+    .nav-btn.active { color: var(--sel-fg, var(--text)); background: var(--sel, var(--btn2)); border-color: var(--border); }
+    .top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; background: transparent;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 99px; background: var(--ok); }
+    .dot.warn { background: var(--warn); }
+    .content { flex: 1; overflow: auto; padding: 24px; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .headline { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .kicker { margin: 0; font-size: 11px; color: var(--muted); }
+    h1 { margin: 4px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -.03em; color: var(--text); }
+    .lede { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); max-width: 520px; }
+    h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.03em; color: var(--text); }
+    .sub { margin: 4px 0 20px; font-size: 12.5px; color: var(--muted); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn {
+      height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border);
