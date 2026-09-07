@@ -14,7 +14,7 @@ const refreshJobs = new WeakMap();
 const CONNECTION_TTL = 30 * 1000;
 
 // install / publish 会下载或上传大体积制品，动辄超过两分钟，用独立的
-// 长超时；其余命令保持 120 秒。两个阈值都可以在设置里调整。
+// 长超时；其余命令保持 120 秒。两个超时都可以在设置里调整。
 const LONG_RUNNING_ACTIONS = new Set(['install', 'publish']);
 
 function timeoutMsFor(args) {
@@ -78,7 +78,7 @@ function executablePath(root) {
   const configured = String(vscode.workspace.getConfiguration('conanCli').get('binary', '') || '').trim();
   const useBundled = !configured || configured === 'conan-cli';
   if (!useBundled) {
-    const expanded = configured.replace(/\$\{workspaceFolder\}/g, root || '');
+    const expanded = configured.replace(/\${workspaceFolder}/g, root || '');
     if (path.isAbsolute(expanded) || expanded.includes('/') || expanded.includes('\\')) {
       return path.resolve(root || '', expanded);
     }
@@ -93,7 +93,7 @@ function cliEnvironment(root, extra = {}) {
   const env = { ...process.env, ...extra };
   const configured = String(vscode.workspace.getConfiguration('conanCli').get('conanBinary', '') || '').trim();
   if (configured) {
-    env.CONAN_BIN = configured.replace(/\$\{workspaceFolder\}/g, root || '');
+    env.CONAN_BIN = configured.replace(/\${workspaceFolder}/g, root || '');
     return env;
   }
   const python = bundledPython();
@@ -365,7 +365,17 @@ async function handleWebviewMessage(panel, root, message) {
 function loadWebview(file, webview) {
   const fs = require('fs');
   const nonce = crypto.randomBytes(16).toString('hex');
-  return fs.readFileSync(path.join(__dirname, file), 'utf8').replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
+  let html = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  if (file === 'dashboard.html') {
+    const css = fs.readFileSync(path.join(__dirname, 'dashboard.css'), 'utf8');
+    const jsPath = path.join(__dirname, 'dashboard.js');
+    const js = fs.existsSync(jsPath)
+      ? fs.readFileSync(jsPath, 'utf8')
+      : ['dashboard-p01.js','dashboard-p02.js','dashboard-p03.js','dashboard-p04.js','dashboard-p05.js','dashboard-p06.js','dashboard-p07.js','dashboard-p08.js','dashboard-p09.js','dashboard-p10.js','dashboard-p11.js','dashboard-p12.js','dashboard-p13.js','dashboard-p14.js','dashboard-p15.js','dashboard-p16.js']
+          .map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('');
+    html = html.replace('/*{{DASHBOARD_CSS}}*/', css).replace('/*{{DASHBOARD_JS}}*/', js);
+  }
+  return html.replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);
 }
 
 function openDashboard(root, view) {

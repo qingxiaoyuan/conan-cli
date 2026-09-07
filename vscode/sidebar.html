@@ -98,7 +98,7 @@
     const api = acquireVsCodeApi();
     const $ = (id) => document.getElementById(id);
     const osName = (v) => ({windows:'Windows',linux:'Linux',kylin:'麒麟'}[v]||v||'-');
-    const archName = (v) => ({x86:'x86 32 位',x64:'x64 64 位',arm:'ARM 32 位',arm64:'ARM 64 位'}[v]||v||'-');
+    const archName = (v) => ({x86:'x86',x64:'x86_64',arm:'armv7',arm64:'aarch64（armv8）'}[v]||v||'-');
     let plat = {};
     let last = { status: {}, analyze: {}, probe: {} };
     function paint() {
@@ -123,9 +123,11 @@
       ].map(([k,v]) => `<div class="row"><span class="muted">${k}</span><span>${v}</span></div>`).join('');
       const rows = (last.analyze && last.analyze.dependencies) || [];
       $('deps-title').textContent = '直接依赖 · ' + osName(plat.os) + ' / ' + archName(plat.arch);
-      $('deps').innerHTML = rows.map((r) => `<div class="row"><span class="mono">${r.reference}</span><span class="${r.status==='found'?'ok':'warn'}">${r.status==='found'?'有制品':'缺失'}</span></div>`).join('');
-      const miss = rows.find((r) => r.status && r.status !== 'found' && r.status !== 'unknown');
-      $('deps-note').textContent = miss ? (miss.reference + ' 无匹配二进制。打开控制台看原因，不要本机编译。') : '';
+      const statusTag = (s) => ({found:'有制品',unknown:'未查询',missing_binary:'无匹配二进制',missing_package:'无此包',missing_version:'无此版本',mismatch:'不一致'}[s] || (s ? '缺失' : '未查询'));
+      const statusClass = (s) => (s === 'found' ? 'ok' : (s === 'unknown' || !s ? 'muted' : 'warn'));
+      $('deps').innerHTML = rows.map((r) => `<div class="row"><span class="mono">${r.reference}</span><span class="${statusClass(r.status)}">${statusTag(r.status)}</span></div>`).join('');
+      const miss = rows.find((r) => r.status === 'missing_binary' || r.status === 'missing_package' || r.status === 'missing_version');
+      $('deps-note').textContent = miss ? (miss.reference + ' 无匹配二进制。请联系你们的制品负责人；打开控制台改组合，不要本机编译。') : '';
       const failed = rows.filter((r) => r.status && r.status !== 'found' && r.status !== 'unknown').length;
       $('foot').textContent = initialized ? (failed ? failed + ' 项需处理' : '正常') : '尚未初始化';
       $('dot').className = 'dot' + ((probe.ok || (initialized && !failed)) ? ' ok' : '');
