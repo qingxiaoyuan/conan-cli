@@ -35,9 +35,17 @@ const api = acquireVsCodeApi();
     const pubProgress = {};
     const pendingResolve = {};
     const $ = (id) => document.getElementById(id);
-    const show = (view) => {
-      if (view === 'overview') view = 'download';
-      document.querySelectorAll('[data-section]').forEach((el) => el.classList.toggle('active', el.dataset.section === view));
-      document.querySelectorAll('.nav-btn[data-view]').forEach((el) => el.classList.toggle('active', el.dataset.view === view));
-      if (view === 'catalog' && !((state.catalog && state.catalog.packages) || []).length) {
-        api.postMessage({type:'catalog', query: $('cat
+    const DEFAULT_CHANNELS = ['stable', 'testing', 'dev'];
+    function catalogQuery() {
+      const channel = ($('cat-channel') && $('cat-channel').value) || '';
+      const build_type = ($('cat-bt') && $('cat-bt').value) || '';
+      return {
+        type: 'catalog',
+        query: ($('cat-q') && $('cat-q').value.trim()) || '',
+        channel: channel,
+        build_type: build_type,
+      };
+    }
+    function fillCatChannels() {
+      const sel = $('cat-channel');
+      if
