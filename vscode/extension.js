@@ -1,1 +1,1 @@
-file:///workspace/conan-cli-work/vscode/extension.js
+PLACEHOLDER_REPLACE_WITH_FILE
