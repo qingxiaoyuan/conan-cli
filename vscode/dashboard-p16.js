@@ -1,4 +1,19 @@
-m()}); return; }
+shPayload();
+        if (!(pld._name && pld.version && pld.os && pld.arch && pld.compiler && pld.compilerVersion)) return;
+        $('modal-text').textContent = '将打包本机已编译的 ' + pld._name + '/' + pld.version + '（不再编译）· ' + displayOs(pld.os) + ' / ' + displayArch(pld.arch) + ' · ' + (pld.buildType || 'Release') + ' · ' + pld.compiler + ' ' + pld.compilerVersion + (pld.noQt ? ' · 不依赖 Qt' : (pld.qt ? ' · Qt ' + pld.qt : '')) + (pld.replace ? ' · 发布后删除远程旧版本' : '');
+        modalAction = () => {
+          publishing = true;
+          pubProgress[pubSelected] = { state: 'running', text: '' };
+          renderPackages();
+          api.postMessage({type:'publish', payload: publishPayload()});
+        };
+        $('modal').classList.add('show');
+        return;
+      }
+      if(name==='add'){ api.postMessage({type:'add'}); return; }
+      if(name==='save-global'){ api.postMessage({type:'save-global', payload:{name:$('g-name').value||'nexus', url:$('g-url').value, username:$('g-user').value, password:$('g-pass').value}}); return; }
+      if(name==='install' && !(osSel && archSel)){ return; }
+      if(name==='catalog'){ api.postMessage(catalogQuery()); return; }
       if(name==='scan-fill'){ api.postMessage({type:'scan-fill'}); return; }
       if(name==='recipe-consume'){
         if (state.status && state.status.conanfile === 'conanfile.py') return;
@@ -18,23 +33,8 @@ m()}); return; }
         state.catalog = m.catalog || {};
         state.catalogError = m.error || '';
         $('busy').textContent = '';
+        fillCatChannels();
         renderCatalog();
       }
       if (m.type === 'scan-fill') {
-        const s = m.scan || {};
-        const installs = s.qt_installs || [];
-        const qt = installs[0] ? (installs[0].short || installs[0].version) : '';
-        const compiler = s.compiler || {};
-        ['p-qt','pub-qt'].forEach((id) => { if (qt && $(id)) { $(id).value = qt; $(id).dataset.touched = '1'; } });
-        ['p-compiler','pub-compiler'].forEach((id) => { if (compiler.id && $(id)) { $(id).value = compiler.id; $(id).dataset.touched = '1'; } });
-        ['p-compiler-ver','pub-compiler-ver'].forEach((id) => { if (compiler.version && $(id)) { $(id).value = compiler.version; $(id).dataset.touched = '1'; } });
-        $('busy').textContent = '';
-        render();
-        return;
-      }
-      if (m.type === 'probe') { state.probe = m.probe || {}; render(); }
-      if (m.type === 'publish-result') { handlePublishResult(m.response || {}); }
-      if (m.type === 'state') { state = Object.assign(state, m); $('busy').textContent = ''; render(); }
-    });
-    render();
-    api.postMessage({type:'refresh'});
+        const s = 
