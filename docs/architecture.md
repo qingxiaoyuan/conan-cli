@@ -18,7 +18,7 @@ CLI / TUI / future VS Code extension
 
 ## Nexus REST 例外
 
-包的查找、安装、登录、发布始终通过 Conan 2 完成，不绕过它对接 Nexus REST。唯一例外是 `catalog` 的全量组件列表：`conan list` 无法枚举仓库中所有包名，因此在配置了 Nexus URL 时由 `internal/nexus` 直接调用 Nexus REST 只读接口；查询失败或按名搜索时回退到 `conan list`。该例外不涉及认证写入，密码仍只经 Conan 登录通道。
+包的查找、安装、登录、发布始终通过 Conan 2 完成，不绕过它对接 Nexus REST。唯一例外是 `catalog`：`conan list` 无法枚举仓库中所有包名，因此在配置了 Nexus URL 时由 `internal/nexus` 直读 Nexus REST 列出组件，并下载组件资产里的 `conaninfo.txt` 解析平台、编译器、Qt、build_type。Conan list 对 Nexus 常常不返回 package `info`，所以制品详情走同一只读例外。查询失败或按名搜索时回退到 `conan list name/version:*`。该例外不涉及认证写入，密码仍只经 Conan 登录通道。
 
 ## Package handling
 

@@ -73,11 +73,7 @@ func run(args []string, out, errOut io.Writer) int {
 	case "remote":
 		err = runRemote(ctx, app, commandArgs, &report)
 	case "catalog", "search":
-		query := ""
-		if len(commandArgs) > 0 {
-			query = commandArgs[0]
-		}
-		report, err = app.Catalog(ctx, query)
+		report, err = runCatalog(ctx, app, commandArgs)
 	case "add":
 		if len(commandArgs) != 1 {
 			return fail(printer, command, errors.New("usage: conan-cli add <package>/<version>"))
@@ -160,6 +156,27 @@ func runRemote(ctx context.Context, app *workflow.App, args []string, report *wo
 		return err
 	}
 	return errors.New("usage: conan-cli remote list|add|login")
+}
+
+func runCatalog(ctx context.Context, app *workflow.App, args []string) (workflow.Report, error) {
+	flags := flag.NewFlagSet("catalog", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	osName := flags.String("os", "", "windows|linux|kylin")
+	arch := flags.String("arch", "", "x86|x64|arm|arm64")
+	compiler := flags.String("compiler", "", "gcc|clang|msvc, or gcc 11")
+	qt := flags.String("qt", "", "Qt version, e.g. 6.8")
+	buildType := flags.String("build-type", "", "Debug|Release")
+	noQt := flags.Bool("no-qt", false, "only packages that do not depend on Qt")
+	if err := flags.Parse(args); err != nil {
+		return workflow.Report{}, err
+	}
+	query := ""
+	if flags.NArg() > 0 {
+		query = flags.Arg(0)
+	}
+	return app.CatalogFilter(ctx, workflow.CatalogFilter{
+		Query: query, OS: *osName, Arch: *arch, Compiler: *compiler, Qt: *qt, BuildType: *buildType, NoQt: *noQt,
+	})
 }
 
 func runInstall(ctx context.Context, app *workflow.App, args []string) (workflow.Report, error) {
@@ -410,8 +427,8 @@ Usage:
   conan-cli config show|set|login|test [--name nexus] [--url URL] [--username USER] [--json]
   conan-cli profile list [--json]
   conan-cli remote list|add|login [--json]
-  conan-cli catalog [package] [--json]
-  conan-cli search [package] [--json]
+  conan-cli catalog [package] [--os linux] [--arch x64] [--compiler gcc] [--qt 6.8] [--build-type Release] [--no-qt] [--json]
+  conan-cli search [package] [--os linux] [--arch x64] [--json]
   conan-cli add <package>/<version> [--json]
   conan-cli install [--os kylin] [--arch x64] [--build-type Release] [--remote nexus] [--json]
   conan-cli publish [--package NAME|--all] [--version v] [--os kylin] [--arch x64] [--no-qt] [--lib-dir DIR] [--include-dir DIR] [--replace] [--dry-run] [--json]

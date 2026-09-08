@@ -11,6 +11,16 @@ type Binary struct {
 	Options  map[string]string
 }
 
+// BinaryRef is one prebuilt package ID tied to a recipe name/version.
+type BinaryRef struct {
+	Name      string
+	Version   string
+	Channel   string
+	Reference string
+	Settings  map[string]string
+	Options   map[string]string
+}
+
 func (c *Client) List(ctx context.Context, query, remote string) (map[string]any, Result, error) {
 	args := []string{"list", query, "--format=json"}
 	if remote != "" {
@@ -44,6 +54,60 @@ func walkBinaries(value any, binaries *[]Binary) {
 			walkBinaries(child, binaries)
 		}
 	}
+}
+
+func ExtractBinaryRefs(data map[string]any) []BinaryRef {
+	var refs []BinaryRef
+	walkBinaryRefs(data, Recipe{}, &refs)
+	return refs
+}
+
+func walkBinaryRefs(value any, current Recipe, refs *[]BinaryRef) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if rec, ok := parseRecipeKey(key); ok {
+				rec.Channel = recipeChannel(key)
+				walkBinaryRefs(child, rec, refs)
+				continue
+			}
+			if key == "info" {
+				if current.Name == "" {
+					continue
+				}
+				info, _ := child.(map[string]any)
+				ref := BinaryRef{
+					Name:      current.Name,
+					Version:   current.Version,
+					Channel:   current.Channel,
+					Reference: current.Reference,
+					Settings:  stringMap(info["settings"]),
+					Options:   stringMap(info["options"]),
+				}
+				if len(ref.Settings) > 0 || len(ref.Options) > 0 {
+					*refs = append(*refs, ref)
+				}
+				continue
+			}
+			walkBinaryRefs(child, current, refs)
+		}
+	case []any:
+		for _, child := range typed {
+			walkBinaryRefs(child, current, refs)
+		}
+	}
+}
+
+func recipeChannel(key string) string {
+	parts := strings.SplitN(key, "@", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	userChannel := strings.SplitN(parts[1], "/", 2)
+	if len(userChannel) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(userChannel[1])
 }
 
 func stringMap(value any) map[string]string {

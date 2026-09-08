@@ -1,13 +1,3 @@
-/div>`;
-      $('cat-list').querySelectorAll('[data-pkg]').forEach((b) => b.onclick = () => {
-        openPkg = openPkg === b.dataset.pkg ? '' : b.dataset.pkg;
-        renderCatalog();
-      });
-      $('cat-list').querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
-        e.stopPropagation();
-        api.postMessage({type:'add-ref', ref: b.dataset.add});
-      });
-    }
     function displayOs(v){ return ({windows:'Windows',linux:'Linux',kylin:'麒麟'}[v]||v||'-'); }
     function normalizeArch(v){
       const key = String(v||'').trim().toLowerCase();

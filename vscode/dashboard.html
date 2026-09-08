@@ -93,12 +93,32 @@
         <div class="headline">
           <div>
             <h2>仓库组件</h2>
-            <p class="lede">查看远程仓库里已有的包和已发布版本。点开组件看版本，需要的话加入项目依赖。</p>
+            <p class="lede">每个组件一行。点开后查看版本、平台、编译器、Qt 与 Debug/Release，再加入依赖。</p>
           </div>
           <button class="btn" data-act="catalog">刷新</button>
         </div>
-        <div class="search">
+        <div class="search cat-filters">
           <input id="cat-q" placeholder="按包名筛选，例如 qtutils">
+          <select id="cat-os" aria-label="操作系统">
+            <option value="">全部系统</option>
+            <option value="windows">Windows</option>
+            <option value="linux">Linux</option>
+            <option value="kylin">麒麟</option>
+          </select>
+          <select id="cat-arch" aria-label="架构">
+            <option value="">全部架构</option>
+            <option value="x86">x86</option>
+            <option value="x64">x64</option>
+            <option value="arm">arm</option>
+            <option value="arm64">arm64</option>
+          </select>
+          <select id="cat-compiler" aria-label="编译器"><option value="">全部编译器</option></select>
+          <select id="cat-qt" aria-label="Qt"><option value="">全部 Qt</option><option value="none">无 Qt</option></select>
+          <select id="cat-bt" aria-label="构建类型">
+            <option value="">全部构建</option>
+            <option value="Debug">Debug</option>
+            <option value="Release">Release</option>
+          </select>
           <button class="btn primary" data-act="catalog">查询</button>
         </div>
         <p class="hint" id="cat-hint"></p>

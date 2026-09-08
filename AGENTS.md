@@ -50,7 +50,7 @@ go build -o bin/conan-cli ./cmd/conan-cli
 ```text
 cmd/conan-cli/main.go    命令分发、flag 解析、文本/JSON 输出切换
 internal/
-  workflow/              唯一业务层：init/status/scan/analyze/install/publish/settings/config/doctor/packages。
+  workflow/              唯一业务层：init/status/scan/analyze/install/publish/settings/config/doctor/packages/catalog。
                          所有入口（CLI/TUI/VS Code）只调这里；新增业务能力先进 workflow
   conan/                 对 conan 二进制的封装（执行、list、配方解析）；Conan 命令调用只允许集中在这
   config/                .conan-cli/project.yaml 与 ~/.conan-cli/config.yaml 的读写（YAML）

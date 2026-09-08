@@ -1,6 +1,15 @@
 // 运行方式：node vscode/args.test.js（零依赖，只用 node:assert）
 const assert = require('assert');
-const { analyzeArgs, installArgs, configSetArgs, settingsSetArgs, publishArgs } = require('./args');
+const { catalogArgs, analyzeArgs, installArgs, configSetArgs, settingsSetArgs, publishArgs } = require('./args');
+
+assert.deepStrictEqual(catalogArgs({}), ['catalog']);
+assert.deepStrictEqual(catalogArgs({ query: 'qtutils' }), ['catalog', 'qtutils']);
+assert.deepStrictEqual(catalogArgs({
+  query: 'qtutils', os: 'linux', arch: 'x64', compiler: 'gcc', qt: '6.8', buildType: 'Release',
+}), [
+  'catalog', 'qtutils', '--os', 'linux', '--arch', 'x64', '--compiler', 'gcc', '--qt', '6.8', '--build-type', 'Release',
+]);
+assert.deepStrictEqual(catalogArgs({ noQt: true }), ['catalog', '--no-qt']);
 
 assert.deepStrictEqual(analyzeArgs({}), ['analyze']);
 assert.deepStrictEqual(analyzeArgs({ os: 'kylin', arch: 'x64', buildType: 'Release' }), [

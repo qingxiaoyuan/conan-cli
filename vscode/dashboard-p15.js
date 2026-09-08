@@ -35,4 +35,4 @@
       if(name==='add'){ api.postMessage({type:'add'}); return; }
       if(name==='save-global'){ api.postMessage({type:'save-global', payload:{name:$('g-name').value||'nexus', url:$('g-url').value, username:$('g-user').value, password:$('g-pass').value}}); return; }
       if(name==='install' && !(osSel && archSel)){ return; }
-      if(name==='catalog'){ api.postMessage({type:'catalog', query:$('cat-q').value.tri
+      if(name==='catalog'){ api.postMessage(catalogQuery()); return; }

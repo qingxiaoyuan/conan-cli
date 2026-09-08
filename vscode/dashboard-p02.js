@@ -1,6 +1,3 @@
--q').value.trim()});
-      }
-    };
     const pills = (el, items, current, setter) => {
       el.innerHTML = items.map(([id, label]) => `<button class="chip ${id===current?'on':''}" data-id="${id}">${label}</button>`).join('');
       el.querySelectorAll('button').forEach((b) => b.onclick = () => { setter(b.dataset.id); persistPlatform(); render(); });

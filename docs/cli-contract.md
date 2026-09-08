@@ -41,7 +41,7 @@ Primary commands for the GUI:
 | 工作台刷新 | `status` |
 | 初始化 | `init` |
 | 扫描 | `scan` 返回本机参考（`qt_installs`），不写入项目。目标 os/arch/compiler/qt 由 `settings set` 手填 |
-| 仓库组件 | `catalog [package]` 列出远程已有包和版本 |
+| 仓库组件 | `catalog [package] [--os --arch --compiler --qt --build-type --no-qt]` 列出远程包、版本及制品。`data.packages[]` 每项含 `name` / `versions` / `binaries[]`；`binaries[]` 每项 `{version, os, arch, compiler, compiler_version, build_type, qt_version, no_qt, reference}`。筛选只保留匹配制品；`data.binary_count` 为制品条数 |
 | 拉取依赖 | `install --os --arch --build-type Release` 执行 `conan install . --build=never` |
 | 依赖分析 | `analyze --os kylin --arch x64` |
 | 下载 | `install --os kylin --arch x64` |

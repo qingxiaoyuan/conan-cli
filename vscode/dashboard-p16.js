@@ -1,4 +1,3 @@
-m()}); return; }
       if(name==='scan-fill'){ api.postMessage({type:'scan-fill'}); return; }
       if(name==='recipe-consume'){
         if (state.status && state.status.conanfile === 'conanfile.py') return;
@@ -18,6 +17,7 @@ m()}); return; }
         state.catalog = m.catalog || {};
         state.catalogError = m.error || '';
         $('busy').textContent = '';
+        fillCatFilters();
         renderCatalog();
       }
       if (m.type === 'scan-fill') {

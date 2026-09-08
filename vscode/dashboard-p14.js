@@ -15,6 +15,11 @@
     ['p-qt','p-compiler','p-compiler-ver','p-out','p-lib-dirs','p-include-dirs'].forEach((id)=>$(id).addEventListener('change', () => { $(id).dataset.touched='1'; persistMatch(); }));
     $('p-workspaces').addEventListener('input', () => { $('p-workspaces').dataset.touched = '1'; });
     $('cat-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') act('catalog'); });
+    $('cat-q').addEventListener('input', () => renderCatalog());
+    ['cat-os','cat-arch','cat-compiler','cat-qt','cat-bt'].forEach((id) => {
+      const el = $(id);
+      if (el) el.addEventListener('change', () => renderCatalog());
+    });
     $('modal-cancel').onclick=()=>{ $('modal').classList.remove('show'); modalAction = null; };
     $('modal-ok').onclick=()=>{
       $('modal').classList.remove('show');

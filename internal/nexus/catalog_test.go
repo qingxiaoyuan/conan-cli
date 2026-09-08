@@ -44,3 +44,29 @@ func TestListPackagesFromNexus(t *testing.T) {
 		t.Fatalf("packages = %#v", packages)
 	}
 }
+
+func TestListPackagesDetailedReadsConanInfo(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/service/rest/v1/components":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"items":[{"name":"qtutils","version":"1.0-_#abc","format":"conan","assets":[{"path":"qtutils/1.0/_/_/0/package/pkgid/0/conaninfo.txt","downloadUrl":"` + server.URL + `/conaninfo.txt"}]}]}`))
+		case r.URL.Path == "/conaninfo.txt":
+			_, _ = w.Write([]byte("[settings]\nos=Linux\narch=x86_64\ncompiler=gcc\ncompiler.version=11\nbuild_type=Release\n[options]\nqt_version=6.8\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	packages, refs, err := ListPackagesDetailed(context.Background(), server.URL+"/repository/conan-hosted/", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packages) != 1 || packages[0].Name != "qtutils" {
+		t.Fatalf("packages = %#v", packages)
+	}
+	if len(refs) != 1 || refs[0].Settings["os"] != "Linux" || refs[0].Options["qt_version"] != "6.8" {
+		t.Fatalf("refs = %#v", refs)
+	}
+}

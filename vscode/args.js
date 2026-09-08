@@ -1,6 +1,18 @@
 // 纯参数构造函数：被 extension.js 和 args.test.js 共用。
 // 只依赖传入的 message 对象，不依赖 vscode 模块，便于用 node 直接测试。
 
+function catalogArgs(message) {
+  const args = ['catalog'];
+  if (message.query) args.push(String(message.query));
+  if (message.os) args.push('--os', String(message.os));
+  if (message.arch) args.push('--arch', String(message.arch));
+  if (message.compiler) args.push('--compiler', String(message.compiler));
+  if (message.qt) args.push('--qt', String(message.qt));
+  if (message.buildType) args.push('--build-type', String(message.buildType));
+  if (message.noQt) args.push('--no-qt');
+  return args;
+}
+
 function analyzeArgs(message) {
   const args = ['analyze'];
   if (message.os) args.push('--os', message.os);
@@ -79,4 +91,4 @@ function publishArgs(payload) {
   return args;
 }
 
-module.exports = { analyzeArgs, installArgs, configSetArgs, settingsSetArgs, publishArgs };
+module.exports = { catalogArgs, analyzeArgs, installArgs, configSetArgs, settingsSetArgs, publishArgs };

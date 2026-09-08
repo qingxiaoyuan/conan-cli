@@ -35,9 +35,14 @@ const api = acquireVsCodeApi();
     const pubProgress = {};
     const pendingResolve = {};
     const $ = (id) => document.getElementById(id);
+    function catalogQuery() {
+      return { type: 'catalog', query: ($('cat-q') && $('cat-q').value.trim()) || '' };
+    }
     const show = (view) => {
       if (view === 'overview') view = 'download';
       document.querySelectorAll('[data-section]').forEach((el) => el.classList.toggle('active', el.dataset.section === view));
       document.querySelectorAll('.nav-btn[data-view]').forEach((el) => el.classList.toggle('active', el.dataset.view === view));
       if (view === 'catalog' && !((state.catalog && state.catalog.packages) || []).length) {
-        api.postMessage({type:'catalog', query: $('cat
+        api.postMessage(catalogQuery());
+      }
+    };

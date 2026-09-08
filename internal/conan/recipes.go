@@ -8,12 +8,27 @@ import (
 type Recipe struct {
 	Name      string `json:"name"`
 	Version   string `json:"version"`
+	Channel   string `json:"channel,omitempty"`
 	Reference string `json:"reference"`
 }
 
+type PackageBinary struct {
+	Version         string `json:"version"`
+	OS              string `json:"os,omitempty"`
+	Arch            string `json:"arch,omitempty"`
+	Compiler        string `json:"compiler,omitempty"`
+	CompilerVersion string `json:"compiler_version,omitempty"`
+	BuildType       string `json:"build_type,omitempty"`
+	QtVersion       string `json:"qt_version,omitempty"`
+	NoQt            bool   `json:"no_qt"`
+	Channel         string `json:"channel,omitempty"`
+	Reference       string `json:"reference,omitempty"`
+}
+
 type Package struct {
-	Name     string   `json:"name"`
-	Versions []string `json:"versions"`
+	Name     string          `json:"name"`
+	Versions []string        `json:"versions"`
+	Binaries []PackageBinary `json:"binaries,omitempty"`
 }
 
 func ParseRecipes(data map[string]any) []Recipe {

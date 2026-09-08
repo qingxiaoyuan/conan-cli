@@ -300,10 +300,8 @@ async function handleWebviewMessage(panel, root, message) {
       await execute(root, cliArgs.installArgs(message), 'Conan 依赖已拉取。');
       break;
     case 'catalog': {
-      busy('正在查询仓库…');
-      const args = ['catalog'];
-      if (message.query) args.push(String(message.query));
-      const response = await runCli(root, args);
+      busy('正在查询仓库组件与制品…');
+      const response = await runCli(root, cliArgs.catalogArgs(message));
       panel.webview.postMessage({
         type: 'catalog',
         catalog: response.data || {},
