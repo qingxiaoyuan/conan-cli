@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-`conan-cli` 是面向团队的 **Conan 2 便捷层**（Go 1.22 编写）。用户填一次设置、执行少量命令，即可完成：初始化项目、扫描本机 Qt/编译器、按「操作系统 + 架构」从 Nexus 仓库查找并只下载已有二进制、把包发布到 Nexus。
+`conan-cli` 是面向团队的 **Conan 2 便捷层**（Go 1.23 编写）。用户填一次设置、执行少量命令，即可完成：初始化项目、扫描本机 Qt/编译器、按「操作系统 + 架构」从 Nexus 仓库查找并只下载已有二进制、把包发布到 Nexus。
 
 三个用户入口共享同一套业务逻辑：
 
@@ -21,7 +21,7 @@
 
 ## 技术栈与依赖
 
-- **Go 1.22**，依赖极少：`gopkg.in/yaml.v3`（配置）、`golang.org/x/term`（TUI 按键）。其余全部标准库。**不要随意引入新依赖**（ADR 0001 明确为控制跨平台打包复杂度而避免大型框架）。
+- **Go 1.23**（`go.mod` 为 `go 1.23.0`，bubbletea 1.3 要求），依赖极少：`gopkg.in/yaml.v3`（配置）、`charmbracelet/bubbletea` + `bubbles` + `lipgloss`（交互式 TUI，ADR 0002 授权引入；`charmbracelet/x/ansi` 是 lipgloss 自带的宽度表，TUI 直接引用以保证宽度计算一致，非新增外部依赖）、`golang.org/x/term`（tty 探测）。其余全部标准库。**不要随意引入新依赖**（ADR 0001 的原则仍在，ADR 0002 是经用户确认的例外）。
 - VS Code 插件是零依赖的纯 Node.js CommonJS 脚本（`vscode/extension.js`），无 npm 构建、无 TypeScript。
 - 运行时依赖本机或插件内置的 **Conan 2**。CLI 按以下顺序解析 Conan 可执行文件（见 `internal/conan/client.go` 的 `resolveBinary`）：`CONAN_BIN` 环境变量 → `CONAN_CLI_BUNDLED_PYTHON`（便携 Python，以 `-s -m conans.conan` 调用）→ PATH 中的 `conan`。
 
@@ -62,9 +62,15 @@ internal/
   nexus/                 远程仓库目录查询（catalog）
   output/                统一的 JSON/文本输出（output.Printer）
   profile/               Conan profile 管理
-  tui/                   终端控制台：真实终端用 ANSI + raw key（方向键/Enter/Esc/Tab）；
-                         管道输入退化为行模式，便于脚本和测试；设置字段表 settings_fields.go
-                         为行模式与光标模式共用，新增字段只改这一处
+  tui/                   终端控制台，双轨：真实终端走 BubbleTea 六 Tab 控制台（bt_*.go，
+                         信息架构对齐 VS Code：拉取依赖/仓库/依赖/发布/设置/诊断 + 并行刷新，
+                         整体式盒式布局（顶栏盒 + 内容盒 + 卡片盒，图例骑边框，设计稿
+                         ui-design/tui-v2.html）、全屏皮肤、鼠标点击（bt_view.go 的区域登记，
+                         内容区坐标内缩 2 列）、四套主题（bt_theme.go：dark/light/transparent/nord，
+                         T 键或 CONAN_CLI_TUI_THEME 切换）；bt_api.go 的 tuiAPI 接口隔离
+                         workflow 便于 fake 注入）；管道输入退化为
+                         行模式（tui.go + settings_fields.go），便于脚本和测试；新增交互能力
+                         优先改 bt_* 文件，行模式保持兼容不追新体验
 vscode/                  VS Code 插件（extension.js、sidebar/dashboard webview、package.json）
 scripts/                 打包脚本（见上）
 docs/                    requirements.md（PRD）、architecture.md、cli-contract.md（JSON 契约）、adr/
@@ -82,7 +88,7 @@ ui-design/               界面设计稿 HTML（参考用，不参与构建）
 ## 测试约定
 
 - 测试与源码同包并列（`*_test.go`），标准 `testing` 包，无外部测试框架。
-- 需要 Conan 的地方用 fake/stub（测试不应依赖真实 Conan 或网络）；TUI 的行模式就是为自动化测试保留的。
+- 需要 Conan 的地方用 fake/stub（测试不应依赖真实 Conan 或网络）；TUI 行模式为脚本保留，交互模式（BubbleTea）的测试用 `btFakeAPI` 直接驱动 model 的 Update/View，不跑真实终端。
 - VS Code 插件的参数构造函数在 `vscode/args.js`（不依赖 vscode 模块），用 `node vscode/args.test.js` 跑断言；`*.test.js` 不进 `.vsix`。
 - 提交前必须跑 `go test ./...` 和 `go vet ./...`，两者当前都是干净的，不要引入新的失败或警告。
 - `internal/profile` 目前无测试文件；`cmd/conan-cli` 的覆盖靠 `internal/workflow` 和 `internal/tui` 的测试间接保证。
@@ -107,7 +113,8 @@ ui-design/               界面设计稿 HTML（参考用，不参与构建）
 - `docs/requirements.md`：产品需求（PRD），含「已确认决策」与平台/配置模型，改行为前先对照它。
 - `docs/cli-contract.md`：CLI `--json` 契约，VS Code 插件依赖它，属稳定性承诺。
 - `docs/architecture.md`：分层与包处理原则。
-- `docs/adr/0001-unified-workflow-and-cursor-tui.md`：为何三入口共用 workflow、TUI 不用框架。
+- `docs/adr/0001-unified-workflow-and-cursor-tui.md`：为何三入口共用 workflow。
+- `docs/adr/0002-bubbletea-tui.md`：交互式 TUI 为何改用 BubbleTea、行模式为何保留。
 
 ## 开发流程提示
 

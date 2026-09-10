@@ -20,7 +20,7 @@
 
 ## 构建
 
-需要 Go 1.22+。命令行直接用时本机还要有 Conan 2；VS Code 插件已内置便携 Python 和 Conan 2。
+需要 Go 1.23+。命令行直接用时本机还要有 Conan 2；VS Code 插件已内置便携 Python 和 Conan 2。
 
 ```bash
 go mod tidy
@@ -35,7 +35,7 @@ conan-cli init
 conan-cli config set --name nexus --url https://nexus.example.com/repository/conan-hosted/ --username alice
 CONAN_PASSWORD=PASSWORD conan-cli config login
 conan-cli settings set --qt 6.8 --compiler gcc --compiler-version 11 --os kylin --arch x64
-conan-cli scan --apply
+conan-cli scan
 conan-cli analyze --os kylin --arch x64
 conan-cli catalog --os linux --arch x64 --build-type Release
 conan-cli add fmt/10.2.1
@@ -92,4 +92,18 @@ dependencies:
 conan-cli tui
 ```
 
-终端控制台与 VS Code 共用同一套 workflow：主菜单可初始化、扫描、分析依赖、按目标平台下载、打开发布表单、编辑全局/项目设置和运行诊断。真实终端内用方向键移动、Enter 确认、Esc 返回，Tab 或左右键切换设置页；只有包名、URL 等文本字段才进入文字编辑。通过管道运行时保留行输入兼容模式，便于脚本和测试；发布和下载都会先展示 Conan settings 预览。
+终端控制台用 [BubbleTea](https://github.com/charmbracelet/bubbletea) 实现（ADR 0002），体验与 VS Code 控制台一致：六个 Tab（拉取依赖 / 仓库 / 依赖 / 发布 / 设置 / 诊断），顶部常驻登录徽标、目标组合 chip 和任务进行中提示，进入时并行刷新 `status + doctor + analyze`。界面铺满整个终端（全屏皮肤），支持鼠标操作和四套主题。
+
+**鼠标**：可点击 Tab 栏、Tab 下方的动作按钮条、组合编辑器的选项行、仓库过滤器 chip、仓库/发布的列表行、设置字段行和“仓库没有这套制品”卡片（点卡片直接改组合）；滚轮等同 `↑/↓`。
+
+**主题**：默认暗色。`T` 键循环切换 暗色 → 亮色 → 透明（沿用终端自身背景）→ Nord，或用环境变量 `CONAN_CLI_TUI_THEME=dark|light|transparent|nord` 指定初始主题。
+
+常用按键：
+
+- `1`–`6` 或 `←/→` 切换 Tab，`q` / `Ctrl-C` 退出，`r` 刷新全部状态，`T` 切换主题。
+- **拉取依赖**：`e` 展开目标组合编辑器（`←/→` 改值、`s` 扫描本机 Qt/编译器预填、改动即静默保存），`a` 检查依赖，`g` 生成配方，`i` 拉取依赖（只取仓库二进制，缺件时展示“仓库没有这套制品”卡片）。
+- **仓库**：输入包名回车查询，`Tab` 在搜索 / 过滤器 / 结果间切换焦点，`Enter` 展开组件，`a` 把选中制品加入依赖。
+- **发布**：`↑/↓` 选组件、`space` 勾选、`Enter` 填发布信息，`p` 发布当前行、`A` 在有勾选时只发布勾选项、未勾选时发布全部；发布前弹出确认摘要（含替换旧版本提示）。
+- **设置**：`↑/↓` 选字段、`Enter` 编辑，`s` 保存项目设置、`l` 保存并登录仓库、`t` 测试连接；密码不回显，留空表示保持已保存。
+
+通过管道运行时保留行输入兼容模式（与 VS Code 无关的旧菜单），便于脚本和测试。

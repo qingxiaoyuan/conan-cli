@@ -240,13 +240,14 @@ func runPackages(ctx context.Context, app *workflow.App, args []string) (workflo
 }
 
 func runScan(ctx context.Context, app *workflow.App, args []string) (workflow.Report, error) {
+	// 扫描结果仅供参考（PRD F-SCN-03：建议填入但必须允许用户改），
+	// 不提供静默写入项目的开关。
 	flags := flag.NewFlagSet("scan", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	apply := flags.Bool("apply", false, "write empty project fields from scan results")
 	if err := flags.Parse(args); err != nil {
 		return workflow.Report{}, err
 	}
-	return app.Scan(ctx, *apply)
+	return app.Scan(ctx)
 }
 
 func runRecipe(app *workflow.App, args []string) (workflow.Report, error) {
@@ -421,7 +422,7 @@ func printUsage(out io.Writer) {
 Usage:
   conan-cli init [--dir <path>] [--json]
   conan-cli status [--dir <path>] [--json]
-  conan-cli scan [--apply] [--json]
+  conan-cli scan [--json]
   conan-cli analyze [--os windows|linux|kylin] [--arch x86|x64|arm|arm64] [--json]
   conan-cli settings show|set [--package NAME] [--version V] [--qt 6.8] [--compiler gcc] [--os kylin] [--arch x64] [--lib-dir DIR] [--include-dir DIR] [--workspace GLOB] [--json]
   conan-cli config show|set|login|test [--name nexus] [--url URL] [--username USER] [--json]

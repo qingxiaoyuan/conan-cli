@@ -8,6 +8,8 @@ import (
 )
 
 func (a *App) GenerateRecipe(kind string, force bool, name, version, qt string) (Report, error) {
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
 	project, err := a.ensureProject()
 	if err != nil {
 		return Report{}, err

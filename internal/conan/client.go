@@ -186,16 +186,6 @@ func (c *Client) RemoteLogin(ctx context.Context, name, username, password strin
 	return c.run(ctx, password+"\n", true, "remote", "login", name, username, "--password")
 }
 
-func (c *Client) Search(ctx context.Context, query, remote string) (map[string]any, Result, error) {
-	args := []string{"list", query, "--format=json"}
-	if remote != "" {
-		args = append(args, "--remote="+remote)
-	}
-	var data map[string]any
-	result, err := c.RunJSON(ctx, &data, args...)
-	return data, result, err
-}
-
 func (c *Client) Install(ctx context.Context, outputFolder, profile, remote string, extra ...string) (Result, error) {
 	args := []string{"install", ".", "--output-folder=" + outputFolder, "--build=never"}
 	if profile != "" {

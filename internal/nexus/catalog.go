@@ -101,27 +101,39 @@ func hasConanInfoAsset(items []componentItem) bool {
 	return false
 }
 
+// hydrateComponentAssets 按 ID 逐个补拉组件详情。仓库不支持 conan-info
+// 资产时每个组件都要一次 GET，串行在大仓库上太慢，这里按 conanInfoWorkers
+// 限流并行，结果仍写回原下标保持顺序。
 func hydrateComponentAssets(ctx context.Context, client *http.Client, baseURL, username, password string, items []componentItem) []componentItem {
-	for i, item := range items {
-		id := strings.TrimSpace(item.ID)
+	sem := make(chan struct{}, conanInfoWorkers)
+	var wg sync.WaitGroup
+	for i := range items {
+		id := strings.TrimSpace(items[i].ID)
 		if id == "" {
 			continue
 		}
-		body, status, err := doGET(ctx, client, baseURL+"/service/rest/v1/components/"+url.PathEscape(id), username, password)
-		if err != nil || status >= 400 {
-			continue
-		}
-		var detailed componentItem
-		if json.Unmarshal(body, &detailed) != nil {
-			continue
-		}
-		if len(detailed.Assets) > 0 {
-			items[i].Assets = detailed.Assets
-		}
-		if items[i].Group == "" {
-			items[i].Group = detailed.Group
-		}
+		wg.Add(1)
+		go func(index int, id string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			body, status, err := doGET(ctx, client, baseURL+"/service/rest/v1/components/"+url.PathEscape(id), username, password)
+			if err != nil || status >= 400 {
+				return
+			}
+			var detailed componentItem
+			if json.Unmarshal(body, &detailed) != nil {
+				return
+			}
+			if len(detailed.Assets) > 0 {
+				items[index].Assets = detailed.Assets
+			}
+			if items[index].Group == "" {
+				items[index].Group = detailed.Group
+			}
+		}(i, id)
 	}
+	wg.Wait()
 	return items
 }
 

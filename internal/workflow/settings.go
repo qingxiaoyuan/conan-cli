@@ -58,6 +58,9 @@ func (a *App) ShowSettings() (Report, error) {
 }
 
 func (a *App) SaveProjectSettings(input ProjectSettingsInput) (Report, error) {
+	// 读-改-写全程持锁，避免与并行 Status 刷新/发布流程互相覆盖字段。
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
 	project, err := a.ensureProject()
 	if err != nil {
 		return Report{}, err

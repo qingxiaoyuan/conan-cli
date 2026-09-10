@@ -24,6 +24,13 @@ type CatalogFilter struct {
 	NoQt      bool
 }
 
+// CatalogPackage / CatalogPackageBinary 是 Report.Data 暴露的仓库目录类型。
+// 界面层消费 Report 时只依赖 workflow，不直接 import internal/conan。
+type (
+	CatalogPackage       = conan.Package
+	CatalogPackageBinary = conan.PackageBinary
+)
+
 func (a *App) Catalog(ctx context.Context, query string) (Report, error) {
 	return a.CatalogFilter(ctx, CatalogFilter{Query: query})
 }

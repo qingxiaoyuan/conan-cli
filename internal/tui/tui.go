@@ -13,19 +13,37 @@ import (
 	"conan-cli/internal/config"
 	"conan-cli/internal/platform"
 	"conan-cli/internal/workflow"
+	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/term"
 )
 
-// Run starts the terminal dashboard. It deliberately uses only ANSI escape
-// sequences and the standard library so the TUI remains easy to build and
-// works in both a real terminal and a piped/non-interactive environment.
-// Run uses cursor navigation when attached to a real terminal. Piped input
-// keeps the line-oriented fallback so the CLI remains scriptable and easy to
-// test without a terminal.
+// Run starts the terminal console. Interactive terminals get the BubbleTea
+// dashboard (ADR 0002)；piped input keeps the line-oriented fallback so the
+// CLI remains scriptable and easy to test without a terminal.
 func Run(ctx context.Context, app *workflow.App, in io.Reader, out io.Writer) error {
 	if isInteractiveTerminal(in, out) {
-		return runCursor(ctx, app, in, out)
+		return runBubble(ctx, btAppAPI{app: app}, in, out)
 	}
 	return runLine(ctx, app, in, out)
+}
+
+func isInteractiveTerminal(in io.Reader, out io.Writer) bool {
+	input, ok := in.(*os.File)
+	if !ok {
+		return false
+	}
+	output, ok := out.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(input.Fd())) && term.IsTerminal(int(output.Fd()))
+}
+
+func toggleSettingsTab(active string) string {
+	if active == "global" {
+		return "project"
+	}
+	return "global"
 }
 
 func runLine(ctx context.Context, app *workflow.App, in io.Reader, out io.Writer) error {
@@ -48,7 +66,7 @@ func runLine(ctx context.Context, app *workflow.App, in io.Reader, out io.Writer
 		case "1":
 			ui.runReport(reader, "正在初始化 / 刷新项目", func() (workflow.Report, error) { return app.Init(ctx) })
 		case "2":
-			ui.runReport(reader, "正在扫描本机 Qt 和编译器", func() (workflow.Report, error) { return app.Scan(ctx, false) })
+			ui.runReport(reader, "正在扫描本机 Qt 和编译器", func() (workflow.Report, error) { return app.Scan(ctx) })
 		case "3":
 			ui.analyzeScreen(ctx, reader)
 		case "4":
@@ -619,7 +637,8 @@ func (ui *dashboard) searchDependencies(ctx context.Context, reader *bufio.Reade
 	if !ok {
 		return
 	}
-	report, err := ui.app.Search(ctx, query, "")
+	// 与 CLI 的 search 一致走 catalog：同一个查询路径，避免两套搜索语义。
+	report, err := ui.app.Catalog(ctx, query)
 	ui.storeReport(report, err)
 	ui.screen("搜索远程仓库")
 	if err != nil {
@@ -802,7 +821,7 @@ func (ui *dashboard) publishScreen(ctx context.Context, reader *bufio.Reader) {
 	}
 
 	name, version := ui.project.Name, ""
-	if metadata, _, err := ui.app.Client.Inspect(ctx); err == nil {
+	if metadata, err := ui.app.RecipeMetadata(ctx); err == nil {
 		if name == "" {
 			name = stringValue(metadata["name"])
 		}
@@ -1122,6 +1141,11 @@ func fallback(value, replacement string) string {
 
 func clip(value string, width int) string {
 	value = strings.ReplaceAll(strings.TrimSpace(value), "\n", " ")
+	return truncateANSI(value, width)
+}
+
+// truncateANSI 按显示宽度截断（保留 ANSI 转义、不做 trim、超出补 …）。
+func truncateANSI(value string, width int) string {
 	if width <= 0 {
 		return ""
 	}
@@ -1166,27 +1190,7 @@ func padCells(value string, width int) string {
 }
 
 func displayWidth(value string) int {
-	width := 0
-	for index := 0; index < len(value); {
-		if value[index] == '\033' && index+1 < len(value) && value[index+1] == '[' {
-			index += 2
-			for index < len(value) {
-				if (value[index] >= 'a' && value[index] <= 'z') || (value[index] >= 'A' && value[index] <= 'Z') {
-					index++
-					break
-				}
-				index++
-			}
-			continue
-		}
-		character, size := rune(value[index]), 1
-		if character >= 0x80 {
-			character, size = utf8.DecodeRuneInString(value[index:])
-		}
-		width += runeWidth(character)
-		index += size
-	}
-	return width
+	return ansi.StringWidth(value)
 }
 
 func runeWidth(character rune) int {
@@ -1196,15 +1200,9 @@ func runeWidth(character rune) int {
 	if character < 0x20 {
 		return 0
 	}
-	// Common terminal UI glyphs are single-cell symbols even though they
-	// live above the CJK code-point range used by the simple width fallback.
-	if character == '▸' || character == '✓' || character == '•' {
-		return 1
-	}
-	if character >= 0x1100 {
-		return 2
-	}
-	return 1
+	// 与 lipgloss.Width 用同一套宽度表（charmbracelet/x/ansi），否则 ─、
+	// ▾、盲文 spinner 这类符号会被当成双宽，导致行被错误截断。
+	return ansi.StringWidth(string(character))
 }
 
 func max(left, right int) int {

@@ -26,9 +26,9 @@ type settingsScope struct {
 	pendingPassword string
 }
 
-// settingsField describes one editable settings entry. Both input modes
-// render and edit this single table, so adding a field can no longer diverge
-// between the line mode and the cursor mode.
+// settingsField describes one editable settings entry. 行模式的渲染/编辑
+// 直接遍历这张表；BubbleTea 设置页的字段标签与提示语也取自这里
+// （bt_tab_settings.go 的 labelFor），新增字段只需改这一处。
 type settingsField struct {
 	aliases     []string // 行模式下可输入的别名（编号始终有效）
 	label       string   // 列表中的展示标签
@@ -227,16 +227,4 @@ func (f settingsField) displayValue(scope *settingsScope) string {
 		return f.placeholder
 	}
 	return value
-}
-
-func osChoiceOptions() []choiceOption {
-	return []choiceOption{{config.OSWindows, "Windows"}, {config.OSLinux, "Linux"}, {config.OSKylin, "麒麟"}}
-}
-
-func archChoiceOptions() []choiceOption {
-	return []choiceOption{{config.ArchX86, "x86 32 位"}, {config.ArchX64, "x64 64 位"}, {config.ArchARM, "ARM 32 位"}, {config.ArchARM64, "ARM 64 位"}}
-}
-
-func buildTypeChoiceOptions() []choiceOption {
-	return []choiceOption{{config.BuildTypeRelease, "Release"}, {config.BuildTypeDebug, "Debug"}}
 }

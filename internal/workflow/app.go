@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"conan-cli/internal/atomicfile"
 	"conan-cli/internal/conan"
@@ -38,6 +39,10 @@ type Check struct {
 type App struct {
 	Dir    string
 	Client *conan.Client
+
+	// saveMu 串行化 project.yaml 的读-改-写。BubbleTea 控制台会并行跑
+	// Status 刷新与静默保存，无锁时 last-writer-wins 会丢字段。
+	saveMu sync.Mutex
 }
 
 func New(dir string) *App {
@@ -68,11 +73,13 @@ func (a *App) Init(ctx context.Context) (Report, error) {
 	if err := os.MkdirAll(a.Dir, 0o755); err != nil {
 		return Report{}, fmt.Errorf("create project directory: %w", err)
 	}
+	a.saveMu.Lock()
 	createdConfig := false
 	project := config.NewProject(a.Dir)
 	if _, statErr := os.Stat(config.ProjectPath(a.Dir)); statErr == nil {
 		loaded, loadErr := config.LoadProject(a.Dir)
 		if loadErr != nil {
+			a.saveMu.Unlock()
 			return Report{}, loadErr
 		}
 		project = loaded
@@ -83,6 +90,7 @@ func (a *App) Init(ctx context.Context) (Report, error) {
 	createdRecipe := false
 	if !manifest.HasConanfile(a.Dir) {
 		if _, created, err := manifest.EnsureText(a.Dir, project.BuildSystem); err != nil {
+			a.saveMu.Unlock()
 			return Report{}, err
 		} else {
 			createdRecipe = created
@@ -100,8 +108,10 @@ func (a *App) Init(ctx context.Context) (Report, error) {
 		project.Remote = global.Nexus.Name
 	}
 	if err := config.SaveProject(a.Dir, project); err != nil {
+		a.saveMu.Unlock()
 		return Report{}, err
 	}
+	a.saveMu.Unlock()
 
 	message := "项目已初始化。请在设置中选择目标平台、Qt 和编译器（与当前开发机无关）"
 	if !createdConfig {
@@ -161,6 +171,8 @@ func (a *App) Project() (*config.Project, error) {
 }
 
 func (a *App) Add(dependency string) (Report, error) {
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
 	project, err := a.Project()
 	if err != nil {
 		return Report{}, err
@@ -208,13 +220,16 @@ func (a *App) RemoteAdd(ctx context.Context, name, url string) (Report, error) {
 		return reportFromResult("remote add", result, err), err
 	}
 	data := map[string]string{"name": name, "url": url}
+	a.saveMu.Lock()
 	if project, projectErr := a.Project(); projectErr == nil {
 		project.Remote = name
 		if saveErr := config.SaveProject(a.Dir, project); saveErr != nil {
+			a.saveMu.Unlock()
 			return Report{}, saveErr
 		}
 		data["project_config"] = config.ProjectPath(a.Dir)
 	}
+	a.saveMu.Unlock()
 	report := reportFromResult("remote add", result, nil)
 	report.Data = data
 	return report, nil
@@ -228,17 +243,11 @@ func (a *App) RemoteLogin(ctx context.Context, name, username, password string) 
 	return reportFromResult("remote login", result, err), err
 }
 
-func (a *App) Search(ctx context.Context, query, remote string) (Report, error) {
-	if remote == "" {
-		if project, projectErr := a.Project(); projectErr == nil {
-			remote = project.Remote
-		}
-	}
-	data, result, err := a.Client.Search(ctx, query, remote)
-	if err != nil {
-		return reportFromResult("search", result, err), err
-	}
-	return Report{OK: true, Action: "search", Data: data}, nil
+// RecipeMetadata 读取仓库根 conanfile 的 name/version 等元数据，供发布表单
+// 预填。Conan 进程调用不外露出 workflow，界面层不直接触碰 conan.Client。
+func (a *App) RecipeMetadata(ctx context.Context) (map[string]any, error) {
+	metadata, _, err := a.Client.Inspect(ctx)
+	return metadata, err
 }
 
 type InstallRequest struct {
@@ -255,10 +264,12 @@ func (a *App) Install(ctx context.Context, profileName, remote, outputFolder str
 }
 
 func (a *App) InstallPlatform(ctx context.Context, request InstallRequest) (Report, error) {
+	a.saveMu.Lock()
 	project, err := a.Project()
 	if err != nil {
 		project, err = a.ensureProject()
 		if err != nil {
+			a.saveMu.Unlock()
 			return Report{}, err
 		}
 	}
@@ -284,6 +295,7 @@ func (a *App) InstallPlatform(ctx context.Context, request InstallRequest) (Repo
 		spec.BuildType = request.BuildType
 	}
 	if missingTarget(spec) {
+		a.saveMu.Unlock()
 		return Report{}, errors.New("请先选择目标操作系统和架构，再拉取 Conan 依赖")
 	}
 	project.Platform.Consume = spec
@@ -292,6 +304,7 @@ func (a *App) InstallPlatform(ctx context.Context, request InstallRequest) (Repo
 	if saveErr := config.SaveProject(a.Dir, project); saveErr != nil {
 		warning = "项目配置保存失败（不影响本次下载）：" + saveErr.Error()
 	}
+	a.saveMu.Unlock()
 	settings := platform.Resolve(spec, project.Compiler, project.QtVersion)
 	result, err := a.Client.Install(ctx, request.OutputFolder, request.Profile, request.Remote, settings.Args()...)
 	report := reportFromResult("install", result, err)
@@ -513,9 +526,12 @@ func (a *App) resolvePublishPlan(ctx context.Context, project *config.Project, r
 	}
 
 	if applyPackageIdentity(a.Dir, project) {
+		a.saveMu.Lock()
 		if err := config.SaveProject(a.Dir, project); err != nil {
+			a.saveMu.Unlock()
 			return nil, fmt.Errorf("保存项目配置失败: %w", err)
 		}
+		a.saveMu.Unlock()
 	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.Version = strings.TrimSpace(request.Version)
@@ -734,8 +750,10 @@ func (a *App) applyPublishRecipe(plan *publishPlan, buildSystem string) (manifes
 	if err != nil {
 		return applied, err
 	}
+	a.saveMu.Lock()
 	project, err := a.Project()
 	if err != nil {
+		a.saveMu.Unlock()
 		return applied, err
 	}
 	spec, _, ok := project.FindPackage(plan.Selector)
@@ -753,11 +771,14 @@ func (a *App) applyPublishRecipe(plan *publishPlan, buildSystem string) (manifes
 		spec.IncludeDirs = plan.IncludeDirs
 	}
 	if err := project.UpsertPackage(spec); err != nil {
+		a.saveMu.Unlock()
 		return applied, err
 	}
 	if err := config.SaveProject(a.Dir, project); err != nil {
+		a.saveMu.Unlock()
 		return applied, err
 	}
+	a.saveMu.Unlock()
 	settings := ProjectSettingsInput{
 		CompilerID: plan.Compiler.ID, CompilerVersion: plan.Compiler.Version,
 		PublishOS: plan.Spec.OS, PublishArch: plan.Spec.Arch, PublishBuildType: plan.Spec.BuildType,

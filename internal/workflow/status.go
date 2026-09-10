@@ -11,21 +11,28 @@ import (
 	"conan-cli/internal/scan"
 )
 
+// ScanResult 是 Report.Data["scan"] 的类型；界面层只依赖 workflow。
+type ScanResult = scan.Result
+
 func (a *App) Status(ctx context.Context) (Report, error) {
 	scanResult := scan.Project(a.Dir)
 	global, _ := config.LoadGlobal()
 	if global == nil {
 		global = &config.Global{}
 	}
+	nameGuess := manifest.DetectPackageName(a.Dir)
+	// project.yaml 的读-改-写全程持锁：BubbleTea 控制台会并行触发
+	// Status 与静默保存，last-writer-wins 会丢字段。
+	a.saveMu.Lock()
 	project, projectErr := a.Project()
 	initialized := projectErr == nil
-	nameGuess := manifest.DetectPackageName(a.Dir)
 	if initialized && applyPackageIdentity(a.Dir, project) {
 		if saveErr := config.SaveProject(a.Dir, project); saveErr == nil {
 			project, projectErr = a.Project()
 			initialized = projectErr == nil
 		}
 	}
+	a.saveMu.Unlock()
 	conanfile := ""
 	if manifest.HasConanfile(a.Dir) {
 		if fileExists(a.Dir, "conanfile.py") {
@@ -72,10 +79,9 @@ func (a *App) Status(ctx context.Context) (Report, error) {
 	return Report{OK: true, Action: "status", Data: data}, nil
 }
 
-func (a *App) Scan(_ context.Context, apply bool) (Report, error) {
+func (a *App) Scan(_ context.Context) (Report, error) {
 	result := scan.Project(a.Dir)
-	_ = apply
-	data := map[string]any{"scan": result, "applied": false}
+	data := map[string]any{"scan": result}
 	message := "扫描仅供参考，不会写入项目。请按目标制品手填 Qt/编译器和平台"
 	if n := len(result.QtInstalls); n > 0 {
 		message = fmt.Sprintf("本机看到 %d 套 Qt，仅供参考；目标版本请在设置中手填或选用", n)

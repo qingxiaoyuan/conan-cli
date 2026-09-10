@@ -287,10 +287,6 @@ async function handleWebviewMessage(panel, root, message) {
       displayResponse(response, response.message || '已生成 conanfile.py。');
       break;
     }
-    case 'scan-apply':
-      busy('正在写入扫描结果…');
-      await execute(root, ['scan', '--apply'], '已采纳扫描结果。');
-      break;
     case 'analyze':
       busy('正在分析依赖…');
       await execute(root, cliArgs.analyzeArgs(message), '分析完成。');

@@ -357,7 +357,10 @@ func fromVersionCommand(binary string, msvc bool) (config.Compiler, Finding) {
 	if msvc {
 		args = []string{}
 	}
-	command := exec.Command(binary, args...)
+	// 编译器探测与 qmake 一致给 3s 超时：卡死的包装脚本不能拖住整个扫描。
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, args...)
 	output, err := command.CombinedOutput()
 	if err != nil && len(output) == 0 {
 		return config.Compiler{}, Finding{}

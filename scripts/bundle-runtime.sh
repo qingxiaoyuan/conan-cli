@@ -140,8 +140,16 @@ for spec in "${PLATFORMS[@]}"; do
 
   prune_python "$dest/python" "$family"
   cat > "$site/sitecustomize.py" <<'PY'
+import os
 import site
+import sys
+
+# 用户级 site-packages 在 sitecustomize 执行前就已加入 sys.path，
+# 只改 ENABLE_USER_SITE 拦不住；这里直接把用户 site 路径移出 sys.path，
+# 防止宿主机 ~/.local 里的包（如旧版 conan）覆盖内置运行时。
 site.ENABLE_USER_SITE = False
+user_site = os.path.realpath(site.getusersitepackages())
+sys.path[:] = [p for p in sys.path if os.path.realpath(p) != user_site]
 PY
   write_manifest "$dest"
 
@@ -154,6 +162,7 @@ done
 host_python="$DEST/linux-x64/python/bin/python3"
 if [[ -x "$host_python" && "$(uname -s)" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
   echo "校验内置 Conan："
-  "$host_python" -m conans.conan --version
+  # -s 跳过用户级 site-packages，否则宿主机 ~/.local 里的 conan 会遮住内置版本。
+  "$host_python" -s -m conans.conan --version
 fi
 echo "runtime 已写入 $DEST"
