@@ -6,7 +6,7 @@
 
 发布用的 `.vsix` 已内置对应平台的 `conan-cli`、便携 Python 3.12 和 Conan 2，一般不用再配路径，也不用本机再装 Conan。
 
-1. `code --install-extension dist/conan-cli-vscode-0.4.21.vsix`
+1. `code --install-extension dist/conan-cli-vscode-0.6.0.vsix`
 2. 打开一个 C/C++ 或 Qt 项目
 3. 点活动栏 Conan 图标
 

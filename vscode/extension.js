@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const cliArgs = require('./args');
+const dashboardFiles = require('./dashboard/files');
 
 const output = vscode.window.createOutputChannel('Conan CLI');
 let dashboardPanel;
@@ -356,17 +357,17 @@ async function handleWebviewMessage(panel, root, message) {
   await refreshState(panel, root);
 }
 
+function loadDashboardJs() {
+  const dir = path.join(__dirname, 'dashboard');
+  return dashboardFiles.map((name) => fs.readFileSync(path.join(dir, name), 'utf8')).join('\n');
+}
+
 function loadWebview(file, webview) {
-  const fs = require('fs');
   const nonce = crypto.randomBytes(16).toString('hex');
   let html = fs.readFileSync(path.join(__dirname, file), 'utf8');
   if (file === 'dashboard.html') {
     const css = fs.readFileSync(path.join(__dirname, 'dashboard.css'), 'utf8');
-    const jsPath = path.join(__dirname, 'dashboard.js');
-    const js = fs.existsSync(jsPath)
-      ? fs.readFileSync(jsPath, 'utf8')
-      : ['dashboard-p01.js','dashboard-p02.js','dashboard-p03.js','dashboard-p04.js','dashboard-p05.js','dashboard-p06.js','dashboard-p07.js','dashboard-p08.js','dashboard-p09.js','dashboard-p10.js','dashboard-p11.js','dashboard-p12.js','dashboard-p13.js','dashboard-p14.js','dashboard-p15.js','dashboard-p16.js']
-          .map((f) => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('');
+    const js = loadDashboardJs();
     html = html.replace('/*{{DASHBOARD_CSS}}*/', css).replace('/*{{DASHBOARD_JS}}*/', js);
   }
   return html.replaceAll('{{CSP_SOURCE}}', webview.cspSource).replaceAll('{{NONCE}}', nonce);

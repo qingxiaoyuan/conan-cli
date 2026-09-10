@@ -92,6 +92,8 @@ def include(path: Path) -> bool:
         return False
     if path.suffix in skip_suffixes:
         return False
+    if path.name.endswith(".test.js"):
+        return False
     return True
 
 dest.parent.mkdir(parents=True, exist_ok=True)

@@ -71,7 +71,9 @@ internal/
                          workflow 便于 fake 注入）；管道输入退化为
                          行模式（tui.go + settings_fields.go），便于脚本和测试；新增交互能力
                          优先改 bt_* 文件，行模式保持兼容不追新体验
-vscode/                  VS Code 插件（extension.js、sidebar/dashboard webview、package.json）
+vscode/                  VS Code 插件（extension.js、sidebar/dashboard webview、package.json）。
+                         控制台脚本按业务放在 vscode/dashboard/（core/platform/deps/download/catalog/publish/settings/doctor/main），
+                         由 extension.js 按 dashboard/files.js 顺序拼进 webview，无构建步骤。
 scripts/                 打包脚本（见上）
 docs/                    requirements.md（PRD）、architecture.md、cli-contract.md（JSON 契约）、adr/
 ui-design/               界面设计稿 HTML（参考用，不参与构建）
@@ -89,7 +91,7 @@ ui-design/               界面设计稿 HTML（参考用，不参与构建）
 
 - 测试与源码同包并列（`*_test.go`），标准 `testing` 包，无外部测试框架。
 - 需要 Conan 的地方用 fake/stub（测试不应依赖真实 Conan 或网络）；TUI 行模式为脚本保留，交互模式（BubbleTea）的测试用 `btFakeAPI` 直接驱动 model 的 Update/View，不跑真实终端。
-- VS Code 插件的参数构造函数在 `vscode/args.js`（不依赖 vscode 模块），用 `node vscode/args.test.js` 跑断言；`*.test.js` 不进 `.vsix`。
+- VS Code 插件的参数构造函数在 `vscode/args.js`（不依赖 vscode 模块），用 `node vscode/args.test.js` 跑断言；控制台脚本拼接用 `node vscode/dashboard.test.js`。`*.test.js` 不进 `.vsix`。
 - 提交前必须跑 `go test ./...` 和 `go vet ./...`，两者当前都是干净的，不要引入新的失败或警告。
 - `internal/profile` 目前无测试文件；`cmd/conan-cli` 的覆盖靠 `internal/workflow` 和 `internal/tui` 的测试间接保证。
 
